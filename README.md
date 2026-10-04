@@ -9,7 +9,3 @@ Mods for Minecraft Dungeons II, written in C# with [NeoRune](https://www.nuget.o
 | [DragSalvage](DragSalvage) | Select items to salvage by dragging over them | ? | ?
 
 All mods need [Blueprint Loader](https://www.nexusmods.com/minecraftdungeons2/mods/2). Install steps are in each mod's `READ_THIS_FILE.txt`.
-
-## License
-
-GPL-3.0, see [LICENSE](LICENSE).
