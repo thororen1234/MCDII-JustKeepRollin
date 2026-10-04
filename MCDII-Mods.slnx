@@ -1,5 +1,8 @@
 <Solution>
+  <Project Path="BetterBlueprintLoader/BetterBlueprintLoader.csproj" />
+  <Project Path="CustomSkins/CustomSkins.csproj" />
   <Project Path="DragSalvage/DragSalvage.csproj" />
   <Project Path="Emoticons/Emoticons.csproj" />
   <Project Path="JustKeepRollin/JustKeepRollin.csproj" />
+  <Project Path="tools/BetterBlueprintLoaderHook/BetterBlueprintLoaderHook.csproj" />
 </Solution>

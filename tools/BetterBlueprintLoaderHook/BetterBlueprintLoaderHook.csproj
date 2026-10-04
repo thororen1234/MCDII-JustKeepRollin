@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Builds BetterBlueprintLoader's R1 hook with the asset tools NeoRune ships, and repacks the mod with it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NeoRuneTools>$(NuGetPackageRoot)neorune.sdk\0.3.0\tools\</NeoRuneTools>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="UAssetAPI" HintPath="$(NeoRuneTools)UAssetAPI.dll" />
+    <Reference Include="NeoRune.Assets" HintPath="$(NeoRuneTools)NeoRune.Assets.dll" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(NeoRuneTools)Newtonsoft.Json.dll" />
+    <Reference Include="ZstdSharp" HintPath="$(NeoRuneTools)ZstdSharp.dll" />
+  </ItemGroup>
+</Project>

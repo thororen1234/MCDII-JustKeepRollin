@@ -1,0 +1,51 @@
+BETTER BLUEPRINT LOADER
+=======================
+
+Loads blueprint mods for Minecraft Dungeons II!
+
+Mods in your ~mods folder start automatically every time a level loads. It works with mods made for Blueprint Loader, so install this instead of Blueprint Loader, not as well as it: both change the same game file, and only one of them can work.
+
+The main menu shows how many mods are running, in its bottom left corner.
+
+Press F10 for the mod list: every mod it found, whether it's running and how long it took to start.
+    Turn off / Turn on   Stops or starts a mod right away. Remembered for next time.
+    Up / Down            Changes the order mods start in. Counts from the next level, or press Restart mods.
+    Mod options          Mods that have options show them under their name: click one to switch it.
+    Restart mods         Stops every mod and starts them again (also F12). Handy when making mods.
+
+If the game crashes while a mod is starting, BetterBlueprintLoader turns that mod off, and tells you on the main menu the next time. Turn it back on in the mod list when the mod is updated.
+
+If the game updates, the mod list says so: if a level then crashes while loading, BetterBlueprintLoader needs an update too.
+
+Turning a mod off stops it, but what it already changed in the game (like WASDControls turning off click-to-move) can stay until the next level.
+
+INSTALL
+-------
+
+1. Close the game, and fully close the Minecraft Launcher if you use it.
+
+2. Open your Minecraft Dungeons II Paks folder.
+    Steam: Right click the game in your library, then Manage > Browse local files, then open Dungeons\Content\Paks
+    Minecraft Launcher: C:\XboxGames\Minecraft Dungeons II\Content\Dungeons\Content\Paks
+
+3. Create a folder called ~mods inside the Paks folder if there is not one already.
+
+4. If you have Blueprint Loader, delete its folder from ~mods.
+
+5. Extract this zip into ~mods, so the files end up in: Paks\~mods\BetterBlueprintLoader
+
+UNINSTALL
+---------
+
+Delete the BetterBlueprintLoader folder from ~mods. Your other mods stop loading until a loader is installed again.
+
+FOR MOD MAKERS
+--------------
+
+A mod is a ModActor class in /Game/Mods/YourMod, as NeoRune and Blueprint Loader mods are: nothing to change.
+
+To give your mod on/off options in the mod list, copy ModOptions.cs (from the source) into your NeoRune mod and ask for an option's value when you need it, from your ModActor:
+
+    if (ModOptions.Toggle(this, "Show hint", true)) ...
+
+The player's choice is remembered by the loader. Without BetterBlueprintLoader it always gives the default.

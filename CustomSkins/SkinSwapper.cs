@@ -1,0 +1,606 @@
+using System.Collections.Generic;
+using NeoRune;
+using UE.CoreUObject;
+using UE.Engine;
+using UE.SWCoreGameplay;
+using UE.UMG;
+
+namespace CustomSkins;
+
+/// <summary>Remembers the picked skin between levels and game sessions: SaveGames/CustomSkins.sav.</summary>
+public class CustomSkinsSettings : USaveGame
+{
+    // 0 is the game's own skin, otherwise the number of the PNG in the Skins folder.
+    public int Skin;
+}
+
+/// <summary>
+/// Puts a skin PNG on the player's character, in place of the texture of the game's skin material. Only this game
+/// sees it: the server and other players still have the skin picked in the game's menu.
+/// </summary>
+public class SkinSwapper : UObject
+{
+    const string SettingsSlot = "CustomSkins";
+    const int MaxSkins = 20;
+    // Skins are 64x64 in the game's format, but bigger (HD) ones are fine: past this, a texture is not a skin.
+    const int MaxSkinSize = 1024;
+    // The skin material's texture of how each pixel takes the light: red metallic, green roughness, blue glow, alpha
+    // subsurface. Each skin has its own, so a custom skin gets <number>_MRES.png, or else a plain one.
+    const string MresParameter = "MRES";
+    // The body mesh of the player's character, and of its copies in menus.
+    const string PlayerBody = "/Game/Spicewood/Art/Characters/Player/Master/SK_Player_Master.SK_Player_Master";
+    // The inventory's picture of the character.
+    const string PreviewWidget = "CharacterRender";
+    // The game's skins are mostly this rough, with no metal, glow or subsurface.
+    const float DefaultRoughness = 0.84f;
+    // Converted skins keep the face with its eyes and mouth in this 8x8 block (unused in Java skins), and the head's
+    // front has it without them.
+    const int FaceBlockX = 56;
+    const int FaceBlockY = 20;
+    const int HeadFrontX = 8;
+    const int HeadFrontY = 8;
+    const int FaceSize = 8;
+    // The game's skin materials take their skin from this.
+    const string GameParameter = "BaseColour";
+    // Texture parameters a skin material might take its skin from, the game's first (names ignore case).
+    const string ParameterNames = GameParameter + "|Skin|SkinTexture|Skin_Texture|SkinTex|T_Skin|PlayerSkin|CharacterSkin|SkinMap|"
+        + "BaseColor|BaseColorTexture|BaseColorMap|Base Color|Base_Color|Albedo|AlbedoTexture|Diffuse|DiffuseTexture|"
+        + "DiffuseMap|Texture|Tex|MainTexture|MainTex|Color|ColorTexture|Avatar|AvatarTexture|CharacterTexture|Atlas";
+
+    UObject? owner;
+    CustomSkinsSettings? settings;
+    // The PNGs as read, and per PNG the texture worn: the PNG with its face on, drawn again each time it's put on.
+    Dictionary<int, UTexture2D> files = new();
+    Dictionary<int, UTextureRenderTarget2D> withFaces = new();
+    // Every texture this mod made, to tell them from the game's: a copy of the character the game makes while a custom
+    // skin is on starts with it, and putting that one back when the skin changes would bring the last skin back.
+    List<UTexture> ours = new();
+    // The game's skin as found on the character, put back on copies that only ever had a custom one.
+    UTexture? gameSkin;
+    UTexture? gameMres;
+    Dictionary<int, UTexture2D> mresTextures = new();
+    UTexture? defaultMres;
+    // LogInfo's lines: a field, because a List passed to a method is a copy in a Blueprint.
+    List<string> info = new();
+
+    // The skin materials changed, with what they had before: the game's own material instances (shared by the body,
+    // the face and the second layer slots) are changed in place, other materials get an instance of ours.
+    ACharacter? character;
+    UTexture? worn;
+    // The player's character and the menu's copies of it, once they wear the skin.
+    List<AActor> dressed = new();
+    // The menu characters already logged: the game puts its skin back on them often, and they get it again.
+    List<AActor> announced = new();
+    List<UMaterialInstanceDynamic> instances = new();
+    List<FName> parameters = new();
+    List<UTexture?> oldSkins = new();
+    List<UTexture?> oldMres = new();
+    // The material slots given an instance of ours, with the material they had.
+    List<UMeshComponent> components = new();
+    List<int> slots = new();
+    List<UMaterialInterface> originals = new();
+    List<UMaterialInstanceDynamic> added = new();
+    // The character already reported as having no skin material, so Check doesn't log it every second.
+    ACharacter? reported;
+
+    public static SkinSwapper? Create(UObject owner)
+    {
+        var swapper = UGameplayStatics.SpawnObject(Unreal.ClassOf<SkinSwapper>(), owner) as SkinSwapper;
+        if (swapper == null) return null;
+        swapper.owner = owner;
+        swapper.settings = UGameplayStatics.LoadGameFromSlot(SettingsSlot, 0) as CustomSkinsSettings;
+        if (swapper.settings == null)
+            swapper.settings = UGameplayStatics.CreateSaveGameObject(Unreal.ClassOf<CustomSkinsSettings>()) as CustomSkinsSettings;
+        return swapper;
+    }
+
+    /// <summary>The skin worn: 0 for the game's, otherwise the number of its PNG.</summary>
+    public int Skin => settings != null ? settings.Skin : 0;
+
+    /// <summary>Wears the next PNG in the Skins folder, then the game's skin again after the last one.</summary>
+    public void Next()
+    {
+        int next = 0;
+        foreach (var number in Available())
+            if (number > Skin)
+            {
+                next = number;
+                break;
+            }
+        Select(next);
+    }
+
+    /// <summary>Wears a skin: 0 for the game's, otherwise the number of its PNG. Remembered for next time.</summary>
+    public void Select(int number)
+    {
+        if (settings == null) return;
+        settings.Skin = number;
+        UGameplayStatics.SaveGameToSlot(settings, SettingsSlot, 0);
+        Log.Write(number == 0 ? "Wearing the game's skin" : $"Wearing {number}.png ({Available().Count} skins in {Folder()})");
+        Apply();
+    }
+
+    /// <summary>Reads the PNG again, to see changes made to it while playing.</summary>
+    public void Reload()
+    {
+        files.Clear();
+        withFaces.Clear();
+        mresTextures.Clear();
+        Apply();
+    }
+
+    /// <summary>Call regularly: puts the skin back on a new character, or after the game put its own back.</summary>
+    public void Check()
+    {
+        if (Skin == 0 || owner == null) return;
+        var current = World.Player(owner) as ACharacter;
+        if (current != null && current == reported) return;
+        if (current != character || worn == null || (current != null && instances.Count == 0))
+        {
+            Apply();
+            return;
+        }
+        for (int i = 0; i < instances.Count; i++)
+            if (!UKismetSystemLibrary.IsValid(instances[i]) || instances[i].K2_GetTextureParameterValue(parameters[i]) != worn)
+            {
+                Apply();
+                return;
+            }
+        for (int i = 0; i < added.Count; i++)
+            if (!UKismetSystemLibrary.IsValid(components[i]) || components[i].GetMaterial(slots[i]) != added[i])
+            {
+                Apply();
+                return;
+            }
+        // A new material instance on the body: the game changed skin.
+        if (current != null && current.Mesh != null && !Changed(current.Mesh.GetMaterial(0)))
+        {
+            Apply();
+            return;
+        }
+        // The main menu has no character of the player's, only the one by the campfire.
+        if (current == null || PreviewShown()) DressPreviews();
+    }
+
+    bool Changed(UMaterialInterface? material) => material is UMaterialInstanceDynamic instance && instances.Contains(instance);
+
+    void Apply()
+    {
+        Restore();
+        reported = null;
+        if (Skin == 0 || owner == null) return;
+        character = World.Player(owner) as ACharacter;
+        worn = Load(Skin);
+        if (worn == null)
+        {
+            Log.Write($"Couldn't read {Skin}.png in {Folder()}");
+            reported = character;
+            return;
+        }
+        if (character != null)
+        {
+            Dress(character);
+            if (instances.Count == 0)
+            {
+                Log.Write("Found no skin material on the character: press F9 in game and send the log");
+                reported = character;
+                return;
+            }
+        }
+        if (character == null || PreviewShown()) DressPreviews();
+    }
+
+    /// <summary>
+    /// Whether a menu shows the character: the inventory draws a copy of it, which wears its own copy of the skin.
+    /// </summary>
+    bool PreviewShown()
+    {
+        UWidgetBlueprintLibrary.GetAllWidgetsOfClass(owner, out var widgets, Unreal.ClassOf<UUserWidget>(), false);
+        foreach (var widget in widgets)
+            if (widget != null && UKismetSystemLibrary.GetObjectName(widget) == PreviewWidget && widget.IsVisible()) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Puts the skin on the copies of the character in menus (the inventory's picture, the main menu's campfire): actors
+    /// with the player's body that aren't players.
+    /// </summary>
+    void DressPreviews()
+    {
+        foreach (var actor in World.FindAll(owner!, Unreal.ClassOf<AActor>()))
+        {
+            if (actor == null || actor == character || dressed.Contains(actor)) continue;
+            // Other players: they keep their own skins.
+            if (actor is APawn pawn && pawn.PlayerState != null) continue;
+            if (actor.GetComponentByClass(Unreal.ClassOf<USkeletalMeshComponent>()) is not USkeletalMeshComponent mesh) continue;
+            if (UKismetSystemLibrary.GetPathName(mesh.GetSkinnedAsset()) != PlayerBody) continue;
+            var before = instances.Count;
+            Dress(actor);
+            if (announced.Contains(actor)) continue;
+            announced.Add(actor);
+            Log.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)} ({instances.Count - before} materials)");
+        }
+    }
+
+    /// <summary>Puts the skin on an actor's skin materials.</summary>
+    void Dress(AActor actor)
+    {
+        dressed.Add(actor);
+        // Armor and the cape are child actors: only the actor's own meshes (body, face) wear the skin.
+        foreach (var component in actor.K2_GetComponentsByClass(Unreal.ClassOf<USkinnedMeshComponent>()))
+        {
+            if (component is not USkinnedMeshComponent mesh) continue;
+            for (int i = 0; i < mesh.GetNumMaterials(); i++)
+            {
+                var material = mesh.GetMaterial(i);
+                if (material == null || Changed(material)) continue;
+                if (material is UMaterialInstanceDynamic own)
+                {
+                    // An instance made from a dynamic instance doesn't see its textures: change the game's own.
+                    Wear(own);
+                    continue;
+                }
+                var instance = UKismetMaterialLibrary.CreateDynamicMaterialInstance(owner, material, FName.None, EMIDCreationFlags.Transient);
+                if (instance == null || !Wear(instance)) continue;
+                mesh.SetMaterial(i, instance);
+                components.Add(mesh);
+                slots.Add(i);
+                originals.Add(material);
+                added.Add(instance);
+            }
+        }
+    }
+
+    /// <summary>Puts the skin on a material if it's a skin material.</summary>
+    bool Wear(UMaterialInstanceDynamic instance)
+    {
+        var parameter = SkinParameter(instance);
+        if (parameter == FName.None) return false;
+        instances.Add(instance);
+        parameters.Add(parameter);
+        // What to put back when the skin changes: the game's, never a skin of ours.
+        var skin = instance.K2_GetTextureParameterValue(parameter);
+        if (skin != null && ours.Contains(skin)) skin = gameSkin;
+        else if (skin != null) gameSkin = skin;
+        oldSkins.Add(skin);
+        var mres = instance.K2_GetTextureParameterValue(MresParameter);
+        var oldMresTexture = mres;
+        if (mres != null && ours.Contains(mres)) oldMresTexture = gameMres;
+        else if (mres != null) gameMres = mres;
+        oldMres.Add(oldMresTexture);
+        instance.SetTextureParameterValue(parameter, worn);
+        if (mres != null) instance.SetTextureParameterValue(MresParameter, Mres(Skin));
+        return true;
+    }
+
+    /// <summary>Gives the character the game's skin back.</summary>
+    void Restore()
+    {
+        for (int i = 0; i < instances.Count; i++)
+        {
+            if (!UKismetSystemLibrary.IsValid(instances[i]) || instances[i].K2_GetTextureParameterValue(parameters[i]) != worn) continue;
+            if (oldSkins[i] != null) instances[i].SetTextureParameterValue(parameters[i], oldSkins[i]);
+            if (oldMres[i] != null) instances[i].SetTextureParameterValue(MresParameter, oldMres[i]);
+        }
+        for (int i = 0; i < added.Count; i++)
+            if (UKismetSystemLibrary.IsValid(components[i]) && components[i].GetMaterial(slots[i]) == added[i])
+                components[i].SetMaterial(slots[i], originals[i]);
+        dressed.Clear();
+        instances.Clear();
+        parameters.Clear();
+        oldSkins.Clear();
+        oldMres.Clear();
+        components.Clear();
+        slots.Clear();
+        originals.Clear();
+        added.Clear();
+    }
+
+    /// <summary>The material's texture parameter that holds a skin, or None.</summary>
+    static FName SkinParameter(UMaterialInstanceDynamic material)
+    {
+        foreach (var name in UKismetStringLibrary.ParseIntoArray(ParameterNames, "|", true))
+            if (IsSkin(material.K2_GetTextureParameterValue(name))) return name;
+        return FName.None;
+    }
+
+    static bool IsSkin(UTexture? texture)
+    {
+        if (texture is not UTexture2D texture2D) return false;
+        var size = texture2D.Blueprint_GetSizeX();
+        return size > 0 && size <= MaxSkinSize && texture2D.Blueprint_GetSizeY() == size;
+    }
+
+    /// <summary>The texture to wear for a PNG: with its face on, or the PNG as it is if that fails. Null for a missing PNG.</summary>
+    UTexture? Load(int number)
+    {
+        var file = File(number);
+        if (file == null) return null;
+        int width = file.Blueprint_GetSizeX();
+        int height = file.Blueprint_GetSizeY();
+        if (!withFaces.ContainsKey(number))
+        {
+            var created = NewTarget(width, height);
+            if (created == null) return file;
+            withFaces[number] = created;
+            ours.Add(created);
+        }
+        // Drawn every time: a render target can lose what was drawn on it, and the face with it.
+        var target = withFaces[number];
+        float pixel = width / 64f;
+        // Drawn again if it didn't take. The head's front is never see-through: if the copy has it so, the drawing
+        // was lost (or the copy lost its alpha, and the character would be invisible in it).
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            UKismetRenderingLibrary.ClearRenderTarget2D(owner, target, new FLinearColor());
+            Draw(target, file, width, height, true);
+            if (Solid(target, (int)((HeadFrontX + FaceSize / 2) * pixel), (int)((HeadFrontY + FaceSize / 2) * pixel)) && FaceOn(target, pixel))
+                return target;
+        }
+        // The PNG as it is still works, without the face.
+        Log.Write($"Couldn't put the face on {number}.png: wearing it as it is");
+        return file;
+    }
+
+    UTexture2D? File(int number)
+    {
+        if (files.ContainsKey(number)) return files[number];
+        var path = Folder() + number + ".png";
+        if (!UBlueprintPathsLibrary.FileExists(path)) return null;
+        var file = UKismetRenderingLibrary.ImportFileAsTexture2D(owner, path);
+        if (file != null)
+        {
+            files[number] = file;
+            ours.Add(file);
+        }
+        return file;
+    }
+
+    /// <summary>
+    /// The texture drawn on a new render target. With withFace, the face block of a converted skin is drawn over the
+    /// head's front: the game only draws its eyes and mouth for its own skins, and the converter keeps the skin's face
+    /// with its eyes and mouth there. Drawn alpha-composited onto the see-through target, so each pixel keeps its alpha:
+    /// translucent and masked drawing leave the target's alpha at 0, and the character invisible.
+    /// </summary>
+    UTextureRenderTarget2D? Copy(UTexture texture, int width, int height, bool withFace)
+    {
+        var target = NewTarget(width, height);
+        if (target != null) Draw(target, texture, width, height, withFace);
+        return target;
+    }
+
+    void Draw(UTextureRenderTarget2D target, UTexture texture, int width, int height, bool withFace)
+    {
+        UKismetRenderingLibrary.BeginDrawCanvasToRenderTarget(owner, target, out var canvas, out var size, out var context);
+        if (canvas != null)
+        {
+            var white = new FLinearColor { R = 1, G = 1, B = 1, A = 1 };
+            canvas.K2_DrawTexture(texture, new FVector2D(), new FVector2D { X = width, Y = height }, new FVector2D(),
+                new FVector2D { X = 1, Y = 1 }, white, EBlendMode.BLEND_AlphaComposite, 0, new FVector2D());
+            if (withFace)
+            {
+                // The layout is 64 pixels wide whatever the size: HD skins scale it.
+                float pixel = width / 64f;
+                canvas.K2_DrawTexture(texture, new FVector2D { X = HeadFrontX * pixel, Y = HeadFrontY * pixel },
+                    new FVector2D { X = FaceSize * pixel, Y = FaceSize * pixel },
+                    new FVector2D { X = FaceBlockX / 64f, Y = FaceBlockY / 64f }, new FVector2D { X = FaceSize / 64f, Y = FaceSize / 64f },
+                    white, EBlendMode.BLEND_AlphaComposite, 0, new FVector2D());
+            }
+        }
+        UKismetRenderingLibrary.EndDrawCanvasToRenderTarget(owner, context);
+    }
+
+    /// <summary>The front of a skin's head, face included, for the skin's button: null for a missing PNG.</summary>
+    public UTexture? Icon(int number)
+    {
+        var skin = Load(number);
+        if (skin == null) return null;
+        var target = NewTarget(FaceSize, FaceSize);
+        if (target == null) return null;
+        UKismetRenderingLibrary.BeginDrawCanvasToRenderTarget(owner, target, out var canvas, out var size, out var context);
+        canvas?.K2_DrawTexture(skin, new FVector2D(), new FVector2D { X = FaceSize, Y = FaceSize },
+            new FVector2D { X = HeadFrontX / 64f, Y = HeadFrontY / 64f }, new FVector2D { X = FaceSize / 64f, Y = FaceSize / 64f },
+            new FLinearColor { R = 1, G = 1, B = 1, A = 1 }, EBlendMode.BLEND_AlphaComposite, 0, new FVector2D());
+        UKismetRenderingLibrary.EndDrawCanvasToRenderTarget(owner, context);
+        return Solid(target, FaceSize / 2, FaceSize / 2) ? target : null;
+    }
+
+    /// <summary>
+    /// Whether the face block is on the head's front: some of their pixels compared (eyes, mouth). A skin without a face
+    /// block has nothing to put on.
+    /// </summary>
+    bool FaceOn(UTextureRenderTarget2D target, float pixel) =>
+        Same(target, pixel, 2, 4) && Same(target, pixel, 5, 5) && Same(target, pixel, 3, 7) && Same(target, pixel, 1, 2);
+
+    /// <summary>Whether a pixel of the head's front is the face block's, or the face block has nothing there.</summary>
+    bool Same(UTextureRenderTarget2D target, float pixel, int x, int y)
+    {
+        var face = UKismetRenderingLibrary.ReadRenderTargetPixel(owner, target, (int)((FaceBlockX + x) * pixel), (int)((FaceBlockY + y) * pixel));
+        if (face.A == 0) return true;
+        var head = UKismetRenderingLibrary.ReadRenderTargetPixel(owner, target, (int)((HeadFrontX + x) * pixel), (int)((HeadFrontY + y) * pixel));
+        return head.R == face.R && head.G == face.G && head.B == face.B;
+    }
+
+    /// <summary>Whether a pixel of a render target is solid (reading it waits for the drawing to finish).</summary>
+    bool Solid(UTextureRenderTarget2D target, int x, int y) => UKismetRenderingLibrary.ReadRenderTargetPixel(owner, target, x, y).A > 0;
+
+    /// <summary>
+    /// An empty render target: sRGB, so colours stay as stored, see-through, and drawn with sharp pixels. The filter
+    /// only takes effect when the target is made, so it's made small and then resized.
+    /// </summary>
+    UTextureRenderTarget2D? NewTarget(int width, int height)
+    {
+        var target = UKismetRenderingLibrary.CreateRenderTarget2D(owner, 1, 1, ETextureRenderTargetFormat.RTF_RGBA8_SRGB,
+            new FLinearColor(), false, false);
+        if (target == null) return null;
+        target.Filter = TextureFilter.TF_Nearest;
+        UKismetRenderingLibrary.ResizeRenderTarget2D(target, width, height);
+        // The resize happens on the render thread: reading a pixel waits for it, so the first drawing isn't lost.
+        UKismetRenderingLibrary.ReadRenderTargetPixel(owner, target, 0, 0);
+        return target;
+    }
+
+    /// <summary>
+    /// Saves the skin picked in the game's menu to the Skins\_game folder as PNGs, its MRES too: to start a skin from,
+    /// or to see which pixels the game uses.
+    /// </summary>
+    public void ExportGameSkin()
+    {
+        if (owner == null) return;
+        var player = World.Player(owner) as ACharacter;
+        if (player == null || player.Mesh == null || player.Mesh.GetMaterial(0) is not UMaterialInstanceDynamic body)
+        {
+            Log.Write("No character to save the skin of");
+            return;
+        }
+        var skin = body.K2_GetTextureParameterValue(GameParameter);
+        var mres = body.K2_GetTextureParameterValue(MresParameter);
+        // While a custom skin is worn, the game's is the one it replaced.
+        for (int i = 0; i < instances.Count; i++)
+            if (instances[i] == body)
+            {
+                skin = oldSkins[i];
+                mres = oldMres[i];
+            }
+        if (skin == null)
+        {
+            Log.Write("The character's material has no skin texture");
+            return;
+        }
+        var name = UKismetSystemLibrary.GetObjectName(skin);
+        Export(skin, name);
+        if (mres != null) Export(mres, name + "_MRES");
+        Log.Write($"Saved {name}.png to {Folder()}_game/");
+        // And the custom skin as worn, face included, to check what the character really has on.
+        if (Skin != 0 && worn != null)
+        {
+            Export(worn, $"worn_{Skin}");
+            Log.Write($"Saved worn_{Skin}.png ({UKismetSystemLibrary.GetObjectName(worn)}) to {Folder()}_game/");
+        }
+    }
+
+    void Export(UTexture texture, string name)
+    {
+        int width = 64;
+        int height = 64;
+        if (texture is UTexture2D texture2D)
+        {
+            width = texture2D.Blueprint_GetSizeX();
+            height = texture2D.Blueprint_GetSizeY();
+        }
+        var target = Copy(texture, width, height, false);
+        if (target != null) UKismetRenderingLibrary.ExportRenderTarget(owner, target, Folder() + "_game/", name + ".png");
+    }
+
+    /// <summary>The skin's &lt;number&gt;_MRES.png, or a plain MRES.</summary>
+    UTexture? Mres(int number)
+    {
+        if (mresTextures.ContainsKey(number)) return mresTextures[number];
+        var path = Folder() + number + "_MRES.png";
+        if (UBlueprintPathsLibrary.FileExists(path))
+        {
+            var texture = UKismetRenderingLibrary.ImportFileAsTexture2D(owner, path);
+            if (texture != null)
+            {
+                mresTextures[number] = texture;
+                ours.Add(texture);
+                return texture;
+            }
+        }
+        if (defaultMres == null)
+        {
+            defaultMres = UKismetRenderingLibrary.CreateRenderTarget2D(owner, 4, 4, ETextureRenderTargetFormat.RTF_RGBA8,
+                new FLinearColor { R = 0, G = DefaultRoughness, B = 0, A = 0 }, false, false);
+            if (defaultMres != null) ours.Add(defaultMres);
+        }
+        return defaultMres;
+    }
+
+    /// <summary>The numbers of the PNGs in the Skins folder (1.png to 20.png), in order.</summary>
+    public static List<int> Available()
+    {
+        var numbers = new List<int>();
+        var folder = Folder();
+        for (int i = 1; i <= MaxSkins; i++)
+            if (UBlueprintPathsLibrary.FileExists(folder + i + ".png")) numbers.Add(i);
+        return numbers;
+    }
+
+    static string Folder() =>
+        UBlueprintPathsLibrary.ConvertRelativePathToFull(UBlueprintPathsLibrary.ProjectContentDir() + "Paks/~mods/CustomSkins/Skins/", "");
+
+    /// <summary>
+    /// Logs what the next steps need to know about the character: its meshes and materials with their skin textures,
+    /// its bones in the reference pose (for second layers) and its cosmetics slots (for capes).
+    /// </summary>
+    public void LogInfo()
+    {
+        if (owner == null) return;
+        info.Clear();
+        info.Add($"--- Custom Skins info, level {World.LevelName(owner)}");
+        info.Add($"Skins folder: {Folder()} ({Available().Count} skins), wearing {(Skin == 0 ? "the game's skin" : Skin + ".png")}");
+        var player = World.Player(owner) as ACharacter;
+        if (player == null)
+        {
+            info.Add("No character");
+            Log.WriteAll(info);
+            return;
+        }
+        info.Add($"Character: {UKismetSystemLibrary.GetPathName(player)}");
+        LogMeshes(player, "");
+        foreach (var component in player.K2_GetComponentsByClass(Unreal.ClassOf<UChildActorComponent>()))
+            if (component is UChildActorComponent child && child.ChildActor != null)
+            {
+                info.Add($"Child actor {UKismetSystemLibrary.GetObjectName(child)}: {UKismetSystemLibrary.GetPathName(child.ChildActor)}");
+                LogMeshes(child.ChildActor, "  ");
+            }
+        player.GetAttachedActors(out var attached, true, false);
+        foreach (var actor in attached)
+        {
+            if (actor == null) continue;
+            info.Add($"Attached actor {UKismetSystemLibrary.GetPathName(actor)}");
+            LogMeshes(actor, "  ");
+        }
+
+        var paperdoll = player.GetComponentByClass(Unreal.ClassOf<USWPaperdollComponent>()) as USWPaperdollComponent;
+        if (paperdoll == null) info.Add("No paperdoll on the character");
+        else foreach (var entry in paperdoll.SlotMap)
+            info.Add($"Cosmetic slot {entry.Key.TagName} = {entry.Value.TypeTag.TagName}");
+
+        Log.WriteAll(info);
+    }
+
+    void LogMeshes(AActor actor, string indent)
+    {
+        foreach (var component in actor.K2_GetComponentsByClass(Unreal.ClassOf<UMeshComponent>()))
+        {
+            // Hidden ones are gear not worn.
+            if (component is not UMeshComponent mesh || !mesh.IsVisible()) continue;
+            var asset = "";
+            if (mesh is USkinnedMeshComponent skinned) asset = UKismetSystemLibrary.GetPathName(skinned.GetSkinnedAsset());
+            if (mesh is UStaticMeshComponent staticMesh) asset = UKismetSystemLibrary.GetPathName(staticMesh.StaticMesh);
+            info.Add($"{indent}Mesh {UKismetSystemLibrary.GetObjectName(mesh)} ({UKismetSystemLibrary.GetClassDisplayName(UGameplayStatics.GetObjectClass(mesh))}) {asset}, on {UKismetSystemLibrary.GetObjectName(mesh.GetAttachParent())} {mesh.GetAttachSocketName()}");
+            var overlay = mesh.GetOverlayMaterial();
+            if (overlay != null) info.Add($"{indent}  overlay: {UKismetSystemLibrary.GetPathName(overlay)}");
+            var slotNames = mesh.GetMaterialSlotNames();
+            for (int i = 0; i < mesh.GetNumMaterials(); i++)
+            {
+                var material = mesh.GetMaterial(i);
+                var slot = i < slotNames.Count ? slotNames[i].ToString() : "";
+                info.Add($"{indent}  [{i}] {slot}: {UKismetSystemLibrary.GetPathName(material)}");
+                if (material == null) continue;
+                // An instance made from a dynamic instance doesn't see its textures: read those from it.
+                var probe = material as UMaterialInstanceDynamic;
+                if (probe == null) probe = UKismetMaterialLibrary.CreateDynamicMaterialInstance(actor, material, FName.None, EMIDCreationFlags.Transient);
+                if (probe == null) continue;
+                foreach (var name in UKismetStringLibrary.ParseIntoArray(ParameterNames + "|" + MresParameter, "|", true))
+                {
+                    var texture = probe.K2_GetTextureParameterValue(name);
+                    if (texture == null) continue;
+                    var size = texture is UTexture2D texture2D ? $"{texture2D.Blueprint_GetSizeX()}x{texture2D.Blueprint_GetSizeY()}" : "?";
+                    info.Add($"{indent}      {name} = {UKismetSystemLibrary.GetPathName(texture)} ({size})");
+                }
+            }
+        }
+    }
+}

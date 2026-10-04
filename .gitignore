@@ -3,3 +3,4 @@ obj/
 dist/
 *.user
 __pycache__/
+*.log

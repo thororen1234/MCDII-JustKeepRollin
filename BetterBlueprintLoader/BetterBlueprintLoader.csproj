@@ -1,0 +1,9 @@
+<Project Sdk="NeoRune.Sdk/0.3.0">
+  <!--
+    After NeoRune packs the mod: adds the R1 hook to its pak. R1 is the game feature data that the game loads with every
+    level; ours also has the game add LoaderComponent to the player controller. Runs before NeoRune installs the pak.
+  -->
+  <Target Name="BetterBlueprintLoaderHook" AfterTargets="NeoRuneCompile" BeforeTargets="NeoRuneInstall" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)\..\tools\BetterBlueprintLoaderHook\BetterBlueprintLoaderHook.csproj&quot; -c Release -- &quot;$(NeoRuneOutDir.TrimEnd('\'))&quot; $(NeoRuneModName) &quot;$(NeoRuneSdkRoot)tools&quot;" />
+  </Target>
+</Project>
