@@ -1,0 +1,8 @@
+<Project Sdk="NeoRune.Sdk/0.3.0">
+  <!--
+    dotnet build compiles the mod and installs it into the game's Paks\~mods\JustKeepRollin folder.
+    Close the game before building: it locks the mod files while running.
+    If the game isn't found automatically, set NeoRuneGameDir in JustKeepRollin.csproj.user:
+      <Project><PropertyGroup><NeoRuneGameDir>D:\XboxGames\Minecraft Dungeons II\Content</NeoRuneGameDir></PropertyGroup></Project>
+  -->
+</Project>
