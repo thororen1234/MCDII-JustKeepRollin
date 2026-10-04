@@ -1,0 +1,34 @@
+EMOTICONS
+=========
+
+The emotes from the Minecraft mod Emoticons, in Minecraft Dungeons II!
+
+Hold B to open the emote wheel, point the mouse at an emote and let go of B to play it. You can also tap B and click an emote. Scroll the mouse wheel for more emotes. Walking stops an emote, or press Stop in the middle of the wheel. There are 34 emotes, from Electro Shuffle and Gangnam Style to Facepalm, Salute and T-Pose.
+
+Only you can see your emotes: other players see you standing still. The emotes have no music, particles or props (like the popcorn), only the animations.
+
+Original Emoticons mod by mchorse: https://github.com/mchorse/Emoticons
+
+REQUIREMENTS
+------------
+
+- Blueprint Loader, which must also be installed
+https://www.nexusmods.com/minecraftdungeons2/mods/2
+
+INSTALL
+-------
+
+1. Close the game, and fully close the Minecraft Launcher if you use it.
+
+2. Open your Minecraft Dungeons II Paks folder.
+    Steam: Right click the game in your library, then Manage > Browse local files, then open Dungeons\Content\Paks
+    Minecraft Launcher: C:\XboxGames\Minecraft Dungeons II\Content\Dungeons\Content\Paks
+
+3. Create a folder called ~mods inside the Paks folder if there is not one already.
+
+4. Extract this zip into ~mods, so the files end up in: Paks\~mods\Emoticons
+
+UNINSTALL
+---------
+
+Delete the Emoticons folder from ~mods.

@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="DragSalvage/DragSalvage.csproj" />
+  <Project Path="Emoticons/Emoticons.csproj" />
+  <Project Path="JustKeepRollin/JustKeepRollin.csproj" />
+</Solution>

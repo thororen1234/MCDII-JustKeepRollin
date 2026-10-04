@@ -2,3 +2,4 @@ bin/
 obj/
 dist/
 *.user
+__pycache__/

@@ -5,7 +5,6 @@ Roll in mid-air!
 
 You can roll while jumping or falling. It uses your normal roll key, so there's nothing to rebind.
 
-
 REQUIREMENTS
 ------------
 

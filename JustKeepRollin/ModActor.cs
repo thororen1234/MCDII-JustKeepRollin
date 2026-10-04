@@ -4,7 +4,6 @@ using UE.Engine;
 using UE.GameplayAbilities;
 using UE.GameplayTags;
 using UE.SpicewoodGAS;
-using UE.SWCoreGameplay;
 
 namespace JustKeepRollin;
 
@@ -20,7 +19,6 @@ public class ModActor : AActor
 
     protected override void ReceiveBeginPlay()
     {
-        Log.Write($"JustKeepRollin loaded in {World.LevelName(this)}");
         // Abilities are granted after the character spawns, and can be granted again later
         // (respawn, gear changes), so keep checking.
         Timer.Start(this, nameof(PatchAbilities), CheckInterval, loop: true);
@@ -56,25 +54,20 @@ public class ModActor : AActor
 
     void PatchRoll(UGA_Roll roll)
     {
-        // Air rolls only stick if this game is the one deciding: a separate server still applies its own rules.
-        var player = World.Player(this);
-        Log.Write($"Found {UKismetSystemLibrary.GetObjectName(roll)} tags={Describe(roll.AbilityTags)} " +
-                  $"server={UKismetSystemLibrary.IsServer(this)} standalone={UKismetSystemLibrary.IsStandalone(this)} " +
-                  $"role={(player != null ? player.GetLocalRole() : ENetRole.ROLE_None)}");
         foreach (var tag in roll.AbilityTags.GameplayTags) rollTags.Add(tag.TagName);
 
         // Allow it in the air.
-        roll.ActivationRequiredTags = WithoutAirRules(roll.ActivationRequiredTags, true, "ActivationRequiredTags");
-        roll.ActivationBlockedTags = WithoutAirRules(roll.ActivationBlockedTags, false, "ActivationBlockedTags");
-        roll.SourceRequiredTags = WithoutAirRules(roll.SourceRequiredTags, true, "SourceRequiredTags");
-        roll.SourceBlockedTags = WithoutAirRules(roll.SourceBlockedTags, false, "SourceBlockedTags");
+        roll.ActivationRequiredTags = WithoutAirRules(roll.ActivationRequiredTags, true);
+        roll.ActivationBlockedTags = WithoutAirRules(roll.ActivationBlockedTags, false);
+        roll.SourceRequiredTags = WithoutAirRules(roll.SourceRequiredTags, true);
+        roll.SourceBlockedTags = WithoutAirRules(roll.SourceBlockedTags, false);
 
         var selfRequire = roll.SelfRequireActivationTags;
-        selfRequire.GameplayTagContainer = WithoutAirRules(selfRequire.GameplayTagContainer, true, "SelfRequireActivationTags");
+        selfRequire.GameplayTagContainer = WithoutAirRules(selfRequire.GameplayTagContainer, true);
         roll.SelfRequireActivationTags = selfRequire;
 
         var selfBlock = roll.SelfBlockActivationTags;
-        selfBlock.GameplayTagContainer = WithoutAirRules(selfBlock.GameplayTagContainer, false, "SelfBlockActivationTags");
+        selfBlock.GameplayTagContainer = WithoutAirRules(selfBlock.GameplayTagContainer, false);
         roll.SelfBlockActivationTags = selfBlock;
     }
 
@@ -88,27 +81,24 @@ public class ModActor : AActor
             if (rollTags.Contains(tag.TagName)) changed = true;
             else kept.Add(tag);
         }
-        Log.Write($"Found {UKismetSystemLibrary.GetObjectName(jump)} blocks={Describe(jump.BlockAbilitiesWithTag)}");
         if (!changed) return;
         jump.BlockAbilitiesWithTag = UBlueprintGameplayTagLibrary.MakeGameplayTagContainerFromArray(kept);
-        Log.Write($"-> no longer blocks the roll");
     }
 
     /// <summary>
     /// Removes the tags that tie the roll to the ground: "on ground" tags from a required list,
     /// and air, jump and fall tags from a blocked list.
     /// </summary>
-    FGameplayTagContainer WithoutAirRules(FGameplayTagContainer tags, bool required, string what)
+    FGameplayTagContainer WithoutAirRules(FGameplayTagContainer tags, bool required)
     {
         var kept = new List<FGameplayTag>();
-        var removed = "";
+        bool changed = false;
         foreach (var tag in tags.GameplayTags)
         {
-            if (IsAirRule(tag.TagName.ToString(), required)) removed += $"{tag.TagName}";
+            if (IsAirRule(tag.TagName.ToString(), required)) changed = true;
             else kept.Add(tag);
         }
-        if (removed == "") return tags;
-        Log.Write($"{what}: removed{removed}");
+        if (!changed) return tags;
         return UBlueprintGameplayTagLibrary.MakeGameplayTagContainerFromArray(kept);
     }
 
@@ -119,7 +109,4 @@ public class ModActor : AActor
         return name.Contains("inair") || name.Contains("airborne") || name.Contains("falling")
             || name.Contains("jump") || name.Contains("movementz");
     }
-
-    static string Describe(FGameplayTagContainer tags) =>
-        UBlueprintGameplayTagLibrary.GetDebugStringFromGameplayTagContainer(tags);
 }

@@ -1,0 +1,128 @@
+name: Release
+
+on:
+  push:
+    tags: ["*-v*"]
+  workflow_dispatch:
+    inputs:
+      mod:
+        description: Mod folder
+        required: true
+      version:
+        description: Version
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the mod and version
+        id: info
+        shell: bash
+        env:
+          INPUT_MOD: ${{ inputs.mod }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            tag="$GITHUB_REF_NAME"
+            mod="${tag%-v*}"
+            version="${tag##*-v}"
+          else
+            mod="$INPUT_MOD"
+            version="$INPUT_VERSION"
+            tag="$mod-v$version"
+          fi
+          if [ ! -f "$mod/$mod.csproj" ]; then
+            echo "::error::There is no mod project at $mod/$mod.csproj"
+            exit 1
+          fi
+          echo "mod=$mod" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        shell: bash
+        env:
+          RELEASE_MOD: ${{ steps.info.outputs.mod }}
+        run: dotnet build "$RELEASE_MOD/$RELEASE_MOD.csproj" -c Release -p:NeoRuneInstall=false
+
+      - name: Package
+        id: package
+        shell: pwsh
+        env:
+          RELEASE_MOD: ${{ steps.info.outputs.mod }}
+          RELEASE_VERSION: ${{ steps.info.outputs.version }}
+        run: |
+          $stage = "stage/$env:RELEASE_MOD"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          $paks = Get-ChildItem "$env:RELEASE_MOD/bin/NeoRune/Pak" -Filter "$($env:RELEASE_MOD)_P.*"
+          if ($paks.Count -ne 3) { throw "Expected $($env:RELEASE_MOD)_P.pak/.ucas/.utoc, found: $($paks.Name -join ', ')" }
+          $paks | Copy-Item -Destination $stage
+          if (Test-Path "$env:RELEASE_MOD/READ_THIS_FILE.txt") { Copy-Item "$env:RELEASE_MOD/READ_THIS_FILE.txt" $stage }
+          $zip = "$env:RELEASE_MOD-$env:RELEASE_VERSION.zip"
+          Compress-Archive -Path $stage -DestinationPath $zip
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MOD: ${{ steps.info.outputs.mod }}
+          RELEASE_VERSION: ${{ steps.info.outputs.version }}
+          RELEASE_TAG: ${{ steps.info.outputs.tag }}
+          RELEASE_ZIP: ${{ steps.package.outputs.zip }}
+        run: |
+          gh release create "$RELEASE_TAG" "$RELEASE_ZIP" --title "$RELEASE_MOD $RELEASE_VERSION" --target "$GITHUB_SHA" --generate-notes
+
+      - name: Read the Nexus Mods settings
+        id: nexus
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY != '' }}
+          RELEASE_MOD: ${{ steps.info.outputs.mod }}
+          RELEASE_TAG: ${{ steps.info.outputs.tag }}
+        run: |
+          config="$RELEASE_MOD/nexus.json"
+          file_id=""
+          if [ -f "$config" ]; then file_id="$(jq -r '.file_id // 0' "$config")"; fi
+          if [ "$file_id" = "" ] || [ "$file_id" = "0" ] || [ "$HAS_API_KEY" != "true" ]; then
+            echo "::notice::Not uploading to Nexus Mods: needs a file_id in $config and the NEXUSMODS_API_KEY secret"
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "upload=true" >> "$GITHUB_OUTPUT"
+          echo "file_id=$file_id" >> "$GITHUB_OUTPUT"
+          mod_id="$(jq -r '.mod_id // 0' "$config")"
+          if [ "$mod_id" = "0" ]; then mod_id=""; fi
+          echo "mod_id=$mod_id" >> "$GITHUB_OUTPUT"
+          if [ -n "$mod_id" ]; then
+            {
+              echo "changelog<<NEXUS_CHANGELOG_END"
+              gh release view "$RELEASE_TAG" --json body --jq .body
+              echo "NEXUS_CHANGELOG_END"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload to Nexus Mods
+        if: steps.nexus.outputs.upload == 'true'
+        uses: Nexus-Mods/upload-action@c96019556046053aa26044b44396cd38929daf23
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_id: ${{ steps.nexus.outputs.file_id }}
+          filename: ${{ steps.package.outputs.zip }}
+          version: ${{ steps.info.outputs.version }}
+          display_name: ${{ steps.info.outputs.mod }}
+          archive_existing_version: true
+          update_mod_version: true
+          mod_id: ${{ steps.nexus.outputs.mod_id }}
+          changelog: ${{ steps.nexus.outputs.changelog }}

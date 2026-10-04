@@ -1,0 +1,30 @@
+DRAG SALVAGE
+============
+
+Select items to salvage by dragging over them!
+
+In the salvage screen, hold the left mouse button on an item and drag across other items to select them all, instead of clicking each one. Dragging over an item that is already selected unselects it.
+
+REQUIREMENTS
+------------
+
+- Blueprint Loader, which must also be installed
+https://www.nexusmods.com/minecraftdungeons2/mods/2
+
+INSTALL
+-------
+
+1. Close the game, and fully close the Minecraft Launcher if you use it.
+
+2. Open your Minecraft Dungeons II Paks folder.
+    Steam: Right click the game in your library, then Manage > Browse local files, then open Dungeons\Content\Paks
+    Minecraft Launcher: C:\XboxGames\Minecraft Dungeons II\Content\Dungeons\Content\Paks
+
+3. Create a folder called ~mods inside the Paks folder if there is not one already.
+
+4. Extract this zip into ~mods, so the files end up in: Paks\~mods\DragSalvage
+
+UNINSTALL
+---------
+
+Delete the DragSalvage folder from ~mods.
