@@ -9,8 +9,7 @@ using UE.SWCoreGameplay;
 namespace JustKeepRollin;
 
 /// <summary>
-/// Makes rolling go the way the character is facing instead of towards the mouse cursor,
-/// and lets you roll in the air.
+/// Lets you roll in the air.
 /// </summary>
 public class ModActor : AActor
 {
@@ -57,19 +56,12 @@ public class ModActor : AActor
 
     void PatchRoll(UGA_Roll roll)
     {
-        Log.Write($"Found {UKismetSystemLibrary.GetObjectName(roll)} tags={Describe(roll.AbilityTags)}");
+        // Air rolls only stick if this game is the one deciding: a separate server still applies its own rules.
+        var player = World.Player(this);
+        Log.Write($"Found {UKismetSystemLibrary.GetObjectName(roll)} tags={Describe(roll.AbilityTags)} " +
+                  $"server={UKismetSystemLibrary.IsServer(this)} standalone={UKismetSystemLibrary.IsStandalone(this)} " +
+                  $"role={(player != null ? player.GetLocalRole() : ENetRole.ROLE_None)}");
         foreach (var tag in roll.AbilityTags.GameplayTags) rollTags.Add(tag.TagName);
-
-        // Roll forward instead of towards the cursor.
-        var directional = roll.IsDirectional;
-        if (directional.Type != EKeyValueType.Bool || directional.@bool)
-        {
-            Log.Write($"IsDirectional type={directional.Type} bool={directional.@bool} " +
-                      $"key={UBlueprintGameplayTagLibrary.GetDebugStringFromGameplayTag(directional.TypeTag)} -> forward");
-            directional.Type = EKeyValueType.Bool;
-            directional.@bool = false;
-            roll.IsDirectional = directional;
-        }
 
         // Allow it in the air.
         roll.ActivationRequiredTags = WithoutAirRules(roll.ActivationRequiredTags, true, "ActivationRequiredTags");

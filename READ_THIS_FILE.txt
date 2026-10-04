@@ -1,9 +1,9 @@
 JUST KEEP ROLLIN
 ================
 
-Roll the way you're facing instead of toward your mouse, and roll in mid-air!
+Roll in mid-air!
 
-Your roll goes in the direction your character is facing, not toward the mouse cursor. It's made for WASD movement mods like WASDControls. You can also roll while jumping or falling. It uses your normal roll key, so there's nothing to rebind.
+You can roll while jumping or falling. It uses your normal roll key, so there's nothing to rebind.
 
 
 REQUIREMENTS
