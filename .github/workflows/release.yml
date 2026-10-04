@@ -81,7 +81,11 @@ jobs:
           RELEASE_TAG: ${{ steps.info.outputs.tag }}
           RELEASE_ZIP: ${{ steps.package.outputs.zip }}
         run: |
-          gh release create "$RELEASE_TAG" "$RELEASE_ZIP" --title "$RELEASE_MOD $RELEASE_VERSION" --target "$GITHUB_SHA" --generate-notes
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$RELEASE_ZIP" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$RELEASE_ZIP" --title "$RELEASE_MOD $RELEASE_VERSION" --target "$GITHUB_SHA" --generate-notes
+          fi
 
       - name: Read the Nexus Mods settings
         id: nexus
