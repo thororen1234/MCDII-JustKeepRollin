@@ -12,8 +12,8 @@ Original Emoticons mod by mchorse: https://github.com/mchorse/Emoticons
 REQUIREMENTS
 ------------
 
-- Blueprint Loader, which must also be installed
-https://www.nexusmods.com/minecraftdungeons2/mods/2
+- BetterBlueprintLoader, which must also be installed
+https://www.nexusmods.com/minecraftdungeons2/mods/95
 
 INSTALL
 -------

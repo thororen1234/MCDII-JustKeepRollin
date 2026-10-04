@@ -8,8 +8,8 @@ You can roll while jumping or falling. It uses your normal roll key, so there's 
 REQUIREMENTS
 ------------
 
-- Blueprint Loader, which must also be installed
-https://www.nexusmods.com/minecraftdungeons2/mods/2
+- BetterBlueprintLoader, which must also be installed
+https://www.nexusmods.com/minecraftdungeons2/mods/95
 
 INSTALL
 -------

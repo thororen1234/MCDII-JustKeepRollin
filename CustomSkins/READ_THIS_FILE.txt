@@ -20,8 +20,8 @@ Only you can see your custom skin. Everyone else sees the skin you picked in the
 REQUIREMENTS
 ------------
 
-- Blueprint Loader, which must also be installed
-https://www.nexusmods.com/minecraftdungeons2/mods/2
+- BetterBlueprintLoader, which must also be installed
+https://www.nexusmods.com/minecraftdungeons2/mods/95
 
 INSTALL
 -------

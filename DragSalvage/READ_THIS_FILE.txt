@@ -8,8 +8,8 @@ In the salvage screen, hold the left mouse button on an item and drag across oth
 REQUIREMENTS
 ------------
 
-- Blueprint Loader, which must also be installed
-https://www.nexusmods.com/minecraftdungeons2/mods/2
+- BetterBlueprintLoader, which must also be installed
+https://www.nexusmods.com/minecraftdungeons2/mods/95
 
 INSTALL
 -------
