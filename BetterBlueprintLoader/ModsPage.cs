@@ -43,6 +43,8 @@ public class ModsPage : UUserWidget
     string focusWanted;
     // Set while the page changes a setting itself and shows the change in place: the page isn't made again for it.
     bool inPlace;
+    // Reset Settings was asked for once: the next one resets.
+    bool resetArmed;
     int hoveredIndex;
     string hoveredAction;
     bool hoverChanged;
@@ -153,6 +155,7 @@ public class ModsPage : UUserWidget
         content.ClearChildren();
         rows.Clear();
         stateLine = null;
+        resetArmed = false;
         settingWidgets.Clear();
         sliderTexts.Clear();
         buttons.Clear();
@@ -199,8 +202,58 @@ public class ModsPage : UUserWidget
         first?.SetKeyboardFocus();
     }
 
+    /// <summary>The game's buttons in the rows put their own labels back when they change: every frame, they get the page's.</summary>
+    public void KeepLabels()
+    {
+        foreach (var row in rows)
+            if (row != null) row.KeepLabel();
+    }
+
+    /// <summary>
+    /// Reset asked for (the Reset row, or X): on a mod's page with settings, its Reset row asks to confirm, and the next
+    /// one resets.
+    /// </summary>
+    public void AskReset()
+    {
+        if (selected == ListPage) return;
+        var reset = RowFor(-1, "reset");
+        if (reset == null) return;
+        if (resetArmed)
+        {
+            Clicked(-1, "reset");
+            return;
+        }
+        resetArmed = true;
+        reset.SetButton("Confirm");
+        reset.SetKeyboardFocus();
+        Focused(reset);
+        SetDetails("Reset Settings", "Puts this mod's settings back to their defaults. Choose Confirm to reset them.", "");
+        detailsShown = "";
+    }
+
+    // The row the controller was last on.
+    GameRow? lastFocused;
+
     /// <summary>A row got the focus (the controller moved onto it): the list scrolls to show it.</summary>
-    public void Focused(GameRow row) => listArea?.ScrollWidgetIntoView(row, true, EDescendantScrollDestination.IntoView, 8);
+    public void Focused(GameRow row)
+    {
+        lastFocused = row;
+        listArea?.ScrollWidgetIntoView(row, true, EDescendantScrollDestination.IntoView, 8);
+    }
+
+    /// <summary>Whether one of the page's rows or buttons has the controller's focus.</summary>
+    public bool HasFocus() => FocusedRow(out var key);
+
+    /// <summary>Gives the controller's focus to the page: the row it was last on, else the first.</summary>
+    public void TakeFocus()
+    {
+        if (lastFocused != null && UKismetSystemLibrary.IsValid(lastFocused) && rows.Contains(lastFocused))
+        {
+            lastFocused.SetKeyboardFocus();
+            return;
+        }
+        FocusRow("");
+    }
 
     /// <summary>The Mods tab was chosen again: the list, like the game's tabs start at their top.</summary>
     public void BackToList()
@@ -495,7 +548,13 @@ public class ModsPage : UUserWidget
         if (manager == null || tree == null) return;
         var folder = SelectedFolder();
         var info = manager.InfoOf(folder);
-        Add(SmallButton("Back to Mods", -1, "list"), 0);
+        var back = Game(GameRow.Button, -1, "list", "Back to Mods");
+        if (back != null)
+        {
+            back.SetButton("Back");
+            Add(back, 0);
+        }
+        else Add(SmallButton("Back to Mods", -1, "list"), 0);
 
         // The title, and the version at the right.
         var header = Ui.Row(tree);
@@ -938,6 +997,13 @@ public class ModsPage : UUserWidget
                 if (info != null) UKismetSystemLibrary.LaunchURL(info.AuthorUrl);
                 return;
             case "reset":
+                // The Reset row asks first; a page drawn without it resets at once.
+                if (!resetArmed && RowFor(-1, "reset") != null)
+                {
+                    AskReset();
+                    return;
+                }
+                resetArmed = false;
                 manager.ResetSettings(folder);
                 return;
             case "onoff":

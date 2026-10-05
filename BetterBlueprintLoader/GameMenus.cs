@@ -74,6 +74,8 @@ public class GameMenus : AActor
         var menus = World.Spawn(manager, Unreal.ClassOf<GameMenus>(), new FVector()) as GameMenus;
         if (menus == null) return null;
         menus.manager = manager;
+        // Menus pause the game: the labels are kept every frame anyway.
+        menus.SetTickableWhenPaused(true);
         menus.Watch();
         return menus;
     }
@@ -151,6 +153,17 @@ public class GameMenus : AActor
             }
             else HidePage($"tab {otherTab} chosen");
         }
+        // The Mods tab can be chosen before the settings screen is found (the game opens the settings on the tab chosen
+        // last), when the page has nowhere to go yet: whenever the tab is the chosen one, the page shows.
+        if (!pageShown && settingsPanel != null && tabButton != null && UKismetSystemLibrary.IsValid(tabButton) && tabButton.GetSelected())
+        {
+            Note("Mods tab: chosen, the page wasn't shown");
+            ShowPage();
+        }
+        if (pageShown) CancelResetDialog();
+        // With a controller, the focus belongs on the page's rows: the game's settings screen puts it on its own list
+        // when the tab changes (and the page isn't part of the screen).
+        if (pageShown && page != null && !dialogShown && UsingController() && !page.HasFocus()) page.TakeFocus();
         if (tabClicked)
         {
             tabClicked = false;
@@ -262,11 +275,15 @@ public class GameMenus : AActor
                 detailsVisibility = detailsView!.GetVisibility();
                 Cover(settingsList);
                 Cover(detailsView);
+                // Invisible, they could still take the controller's focus: the page's rows get it instead.
+                settingsList!.SetIsEnabled(false);
+                detailsView!.SetIsEnabled(false);
             }
             else
             {
                 panelVisibility = settingsPanel.GetVisibility();
                 Cover(settingsPanel);
+                settingsPanel.SetIsEnabled(false);
             }
             var added = AddPage();
             pageShown = true;
@@ -324,6 +341,10 @@ public class GameMenus : AActor
             Uncover(detailsView, detailsVisibility);
         }
         else Uncover(settingsPanel, panelVisibility);
+        // Enabled again in any case: which of them was disabled can't have changed, but the panel may have been found since.
+        if (settingsList != null && UKismetSystemLibrary.IsValid(settingsList)) settingsList.SetIsEnabled(true);
+        if (detailsView != null && UKismetSystemLibrary.IsValid(detailsView)) detailsView.SetIsEnabled(true);
+        if (settingsPanel != null && UKismetSystemLibrary.IsValid(settingsPanel)) settingsPanel.SetIsEnabled(true);
     }
 
     /// <summary>Keeps the page on the settings panel's place on screen (it can move: the screen animates in, resizes).</summary>
@@ -409,10 +430,151 @@ public class GameMenus : AActor
             menuButton = Ui.GameWidget(this, GameUI.ClassPath(after)) as UCommonButtonBase;
             if (menuButton == null) return;
             menuButton.OnButtonBaseClicked += OnMenuButton;
+            // The button puts its own label back while it's hovered or focused, from these same events: the label goes
+            // back right after, in the same event, before the screen is drawn.
+            menuButton.OnButtonBaseHovered += OnMenuButtonChanged;
+            menuButton.OnButtonBaseUnhovered += OnMenuButtonChanged;
+            menuButton.OnButtonBaseFocused += OnMenuButtonChanged;
+            menuButton.OnButtonBaseUnfocused += OnMenuButtonChanged;
             GameUI.InsertNextTo(after, menuButton, true);
         }
-        var label = GameUI.FindOfClass(menuButton, Unreal.ClassOf<UTextBlock>()) as UTextBlock;
-        if (label != null && label.GetText().ToString() != ButtonLabel) label.SetText(ButtonLabel);
+        menuLabel = GameUI.Find(menuButton, "TextBlockWidget") as UTextBlock ?? GameUI.FindOfClass(menuButton, Unreal.ClassOf<UTextBlock>()) as UTextBlock;
+        CoverMenuLabel();
+        KeepLabels();
+    }
+
+    // The MODS button's label, the game's: the button puts its own back (LOBBY BUTTON) when it changes, from places the
+    // loader can't follow (with a controller). So it's hidden, under the loader's own label, drawn in its look.
+    UTextBlock? menuLabel;
+    UTextBlock? ownLabel;
+    UOverlay? labelStack;
+
+    /// <summary>Puts the loader's label over the game's, which stays (hidden) for the button's size and its look.</summary>
+    void CoverMenuLabel()
+    {
+        if (menuLabel == null || menuButton == null) return;
+        if (ownLabel != null && UKismetSystemLibrary.IsValid(ownLabel) && labelStack != null && menuLabel.GetParent() == labelStack) return;
+        var parent = menuLabel.GetParent();
+        labelStack = UGameplayStatics.SpawnObject(Unreal.ClassOf<UOverlay>(), menuButton) as UOverlay;
+        ownLabel = UGameplayStatics.SpawnObject(Unreal.ClassOf<UTextBlock>(), menuButton) as UTextBlock;
+        if (parent == null || labelStack == null || ownLabel == null) return;
+        // In the game's label's place: a named slot holds one widget, which the stack replaces; other panels get the
+        // stack next to the label.
+        if (parent is UContentWidget holder)
+        {
+            labelStack.AddChildToOverlay(menuLabel);
+            holder.SetContent(labelStack);
+        }
+        else
+        {
+            if (!GameUI.InsertNextTo(menuLabel, labelStack, true)) return;
+            labelStack.AddChildToOverlay(menuLabel);
+        }
+        var slot = labelStack.AddChildToOverlay(ownLabel);
+        slot?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
+        slot?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
+        ownLabel.SetText(ButtonLabel);
+        menuLabel.SetRenderOpacity(0);
+    }
+
+    // Widgets to look through, kept between frames (a list made per call would be a copy each time it's passed).
+    List<UWidget> walk = new();
+
+    /// <summary>
+    /// With a controller, the focused button shows more of its own parts (its button prompt, an extra box), and the
+    /// copied button's still have the default label: any text in the MODS button saying Lobby Button says MODS.
+    /// </summary>
+    void RenameDefaults()
+    {
+        if (menuButton == null || !UKismetSystemLibrary.IsValid(menuButton)) return;
+        walk.Clear();
+        walk.Add(menuButton);
+        for (int i = 0; i < walk.Count && i < 256; i++)
+        {
+            var widget = walk[i];
+            if (widget is UTextBlock text)
+            {
+                if (UKismetStringLibrary.ToLower(text.GetText().ToString()) == "lobby button") text.SetText(ButtonLabel);
+                continue;
+            }
+            if (widget is URichTextBlock rich)
+            {
+                if (UKismetStringLibrary.ToLower(rich.GetText().ToString()) == "lobby button") rich.SetText(ButtonLabel);
+                continue;
+            }
+            if (widget is UUserWidget user && user.WidgetTree?.RootWidget != null) walk.Add(user.WidgetTree.RootWidget);
+            if (widget is UPanelWidget panel)
+                for (int c = 0; c < panel.GetChildrenCount(); c++)
+                {
+                    var child = panel.GetChildAt(c);
+                    if (child != null) walk.Add(child);
+                }
+        }
+    }
+
+    /// <summary>The loader's label in the game's label's current look (it changes when hovered or focused).</summary>
+    void MatchMenuLabel()
+    {
+        if (ownLabel == null || menuLabel == null || !UKismetSystemLibrary.IsValid(ownLabel) || !UKismetSystemLibrary.IsValid(menuLabel)) return;
+        ownLabel.SetFont(menuLabel.Font);
+        ownLabel.SetColorAndOpacity(menuLabel.ColorAndOpacity);
+        ownLabel.SetShadowOffset(menuLabel.ShadowOffset);
+        ownLabel.SetShadowColorAndOpacity(menuLabel.ShadowColorAndOpacity);
+        ownLabel.SetTextTransformPolicy(menuLabel.TextTransformPolicy);
+        ownLabel.SetJustification(menuLabel.Justification);
+    }
+
+    /// <summary>
+    /// Every frame, before the screen is drawn: the game's buttons put their own labels back whenever they change
+    /// (hovered, pressed), and the MODS button and the Mods page's buttons get theirs again, so they never flicker.
+    /// </summary>
+    public override void ReceiveTick(float deltaSeconds) => KeepLabels();
+
+    void OnMenuButtonChanged(UCommonButtonBase? button) => KeepLabels();
+
+    void KeepLabels()
+    {
+        // The hidden label keeps MODS too, so the button stays the size it is with MODS.
+        if (menuLabel != null && UKismetSystemLibrary.IsValid(menuLabel) && menuLabel.GetText().ToString() != ButtonLabel) menuLabel.SetText(ButtonLabel);
+        MatchMenuLabel();
+        RenameDefaults();
+        if (pageShown && page != null) page.KeepLabels();
+    }
+
+    // The game's reset dialog last cancelled, while it stays on screen; whether any dialog is on screen (it has the focus).
+    UAS_DialogFrame? cancelledDialog;
+    bool dialogShown;
+
+    /// <summary>Whether the player is using a controller now (the game shows controller buttons).</summary>
+    bool UsingController()
+    {
+        var input = USubsystemBlueprintLibrary.GetLocalPlayerSubSystemFromPlayerController(World.PlayerController(this), Unreal.ClassOf<UE.CommonInput.UCommonInputSubsystem>()) as UE.CommonInput.UCommonInputSubsystem;
+        return input != null && input.GetCurrentInputType() == UE.CommonInput.ECommonInputType.Gamepad;
+    }
+
+    /// <summary>
+    /// The settings screen's Reset (X) asks to reset the settings of the game's tab shown before the Mods tab, which
+    /// isn't what's on screen: on the Mods tab, the game's dialog is cancelled, and the page offers the mod's own reset.
+    /// </summary>
+    void CancelResetDialog()
+    {
+        UWidgetBlueprintLibrary.GetAllWidgetsOfClass(this, out var dialogs, Unreal.ClassOf<UAS_DialogFrame>(), false);
+        UAS_DialogFrame? shown = null;
+        foreach (var widget in dialogs)
+            if (widget is UAS_DialogFrame dialog && dialog.IsVisible()) shown = dialog;
+        dialogShown = shown != null;
+        if (shown == null)
+        {
+            cancelledDialog = null;
+            return;
+        }
+        if (shown == cancelledDialog) return;
+        var body = shown.BodyTextBlock != null ? UKismetStringLibrary.ToLower(shown.BodyTextBlock.GetText().ToString()) : "";
+        if (!body.Contains("reset")) return;
+        cancelledDialog = shown;
+        Note("Mods tab: the game's reset dialog cancelled");
+        shown.OnDialogResult(UE.CommonGame.ECommonMessagingResult.Cancelled);
+        page?.AskReset();
     }
 
     /// <summary>

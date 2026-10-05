@@ -1,4 +1,5 @@
 using NeoRune;
+using UE.Angelscript;
 using UE.CoreUObject;
 using UE.Engine;
 using UE.InputCore;
@@ -67,8 +68,10 @@ public class GameRow : UUserWidget
         row.kind = kind;
         row.Index = index;
         row.Action = action;
-        // Headers are only text: the controller passes them by.
+        // Headers are only text: the controller passes them by. The others take part in hit testing themselves (user
+        // widgets don't by default), as the controller only moves between widgets that do.
         row.bIsFocusable = kind != Header;
+        if (kind != Header) row.SetVisibility(ESlateVisibility.Visible);
         if (!row.Build()) return null;
         return row;
     }
@@ -82,7 +85,8 @@ public class GameRow : UUserWidget
         if (entry == null || tree == null || stack == null || catcher == null) return false;
         // The game's row never gets the mouse; the see-through border over it does, for this widget.
         entry.SetVisibility(ESlateVisibility.HitTestInvisible);
-        background = GameUI.Find(entry, "Background") as UUserWidget;
+        // The part that lights up: named Background in most of the game's rows, but not in all (the button rows).
+        background = GameUI.Find(entry, "Background") as UUserWidget ?? GameUI.FindOfClass(entry, Unreal.ClassOf<UAS_SettingsEntry_Background>()) as UUserWidget;
         catcher.SetBrushColor(Ui.Color(0, 0, 0, 0));
         if (kind == Header) catcher.SetVisibility(ESlateVisibility.HitTestInvisible);
         Fill(stack.AddChildToOverlay(entry));
@@ -98,6 +102,16 @@ public class GameRow : UUserWidget
     }
 
     UTextBlock? Part(string name) => GameUI.Find(entry, name) as UTextBlock;
+
+    // The button's label, once found: the game's button puts its own back (SETTINGS BUTTON) whenever it changes.
+    UTextBlock? buttonLabel;
+
+    /// <summary>Puts the button's label back if the game's button changed it (called every frame).</summary>
+    public void KeepLabel()
+    {
+        if (!hasButton || buttonText == "" || buttonLabel == null) return;
+        if (buttonLabel.GetText().ToString() != buttonText) buttonLabel.SetText(buttonText);
+    }
 
     /// <summary>The row's name, at its left.</summary>
     public void SetName(string text) => Part("Text_SettingName")?.SetText(text);
@@ -138,14 +152,15 @@ public class GameRow : UUserWidget
             return;
         }
         button.SetVisibility(ESlateVisibility.HitTestInvisible);
-        (GameUI.FindOfClass(button, Unreal.ClassOf<UTextBlock>()) as UTextBlock)?.SetText(buttonText);
+        buttonLabel = GameUI.FindOfClass(button, Unreal.ClassOf<UTextBlock>()) as UTextBlock;
+        buttonLabel?.SetText(buttonText);
     }
 
     /// <summary>A toggle's state: its ON/OFF and its switch (the game's own animation, played to its end at once).</summary>
     public void SetToggle(bool on)
     {
         Part("StateText")?.SetText(on ? "ON" : "OFF");
-        var switching = look?.Animation(Toggle, "ToggleOn");
+        var switching = (entry as UAS_SettingsEntry_Bool)?.ToggleOn ?? look?.Animation(Toggle, "ToggleOn");
         if (switching == null) return;
         if (on) PlayOn(entry, switching, true, 100);
         else PlayOn(entry, switching, false, 100);
@@ -215,8 +230,18 @@ public class GameRow : UUserWidget
     {
         if (on == lit) return;
         lit = on;
-        PlayOn(background, look?.Animation(RowBackground, "OnHover"), on, 1);
-        PlayOn(entry, look?.Animation(kind, "OnHover"), on, 1);
+        PlayOn(background, (background as UAS_SettingsEntry_Background)?.OnHover ?? look?.Animation(RowBackground, "OnHover"), on, 1);
+        PlayOn(entry, HoverOf(entry) ?? look?.Animation(kind, "OnHover"), on, 1);
+    }
+
+    /// <summary>The game's row's own hover animation (the white frame, the controller's A prompt), as its class has it.</summary>
+    static UWidgetAnimation? HoverOf(UUserWidget? row)
+    {
+        if (row is UAS_SettingsEntry_SubCollection button) return button.OnHover;
+        if (row is UAS_SettingsEntry_Bool toggle) return toggle.OnHover;
+        if (row is UAS_SettingsEntry_Scalar slider) return slider.OnHover;
+        if (row is UAS_SettingsEntry_Dropdown dropdown) return dropdown.OnHover;
+        return null;
     }
 
     void Hovered()
