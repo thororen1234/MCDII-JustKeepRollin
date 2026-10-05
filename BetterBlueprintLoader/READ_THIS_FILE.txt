@@ -21,7 +21,8 @@ On the left are BetterBlueprintLoader and every mod it found. Choose one to see 
 BetterBlueprintLoader's own page has:
     Main Menu Label        The line at the bottom left of the main menu: how many mods are running.
     Main Menu Mods Button  The MODS button on the main menu.
-    Restart Mods           Stops every mod and starts them again (also F12). Handy when making mods.
+    Restart Mods           Stops every mod and starts them again. Handy when making mods.
+    Restart Mods Key       A key that does the same from anywhere: F12 unless you change it.
 
 If the game crashes while a mod is starting, BetterBlueprintLoader turns that mod off and tells you on the main menu the next time. Turn it back on in the Mods tab when the mod is updated.
 

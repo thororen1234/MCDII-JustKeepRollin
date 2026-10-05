@@ -87,11 +87,11 @@ public static class Look
     }
 
     /// <summary>A keybind's key: shows it, and takes the next key pressed after a click.</summary>
-    public static PageKey? KeySelector(UWidgetTree tree, ModsPage page, int index, bool secondary, FKey key)
+    public static PageKey? KeySelector(UWidgetTree tree, ModsPage page, int index, bool secondary, FKey key, FButtonStyle style)
     {
         var selector = UGameplayStatics.SpawnObject(Unreal.ClassOf<PageKey>(), tree) as PageKey;
         if (selector == null) return null;
-        selector.WidgetStyle = Button(false, false);
+        selector.WidgetStyle = style;
         selector.TextStyle = TextStyle(15);
         selector.SetNoKeySpecifiedText("None");
         selector.SetKeySelectionText("Press a key...");

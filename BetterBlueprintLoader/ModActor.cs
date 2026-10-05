@@ -14,7 +14,9 @@ namespace BetterBlueprintLoader;
     Description = "Adds a MODS button to the main menu, which opens this tab.")]
 [ModSetting.Heading("Mods")]
 [ModSetting.EventButton(ModManager.RestartSetting, "Restart Mods", ButtonText = "Restart",
-    Description = "Stops every running mod and starts them again, in their order (also F12). Handy when making mods.")]
+    Description = "Stops every running mod and starts them again, in their order. Handy when making mods.")]
+[ModSetting.Keybind(ModManager.RestartKeySetting, "Restart Mods Key", Default = "F12",
+    Description = "Restarts the mods from anywhere, like the Restart button.")]
 [ModSetting.Text("If the game crashes while a mod is starting, BetterBlueprintLoader turns that mod off and tells you on the main menu. Turn it back on here when the mod is updated.")]
 public class ModActor : AActor, IModSettings
 {

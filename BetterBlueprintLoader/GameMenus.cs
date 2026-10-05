@@ -40,12 +40,20 @@ public class GameMenus : AActor
     const int PageLayer = 5000;
 
     // The settings screen on screen now: its tab list, and its settings panel (list and details), which the Mods page
-    // covers while its tab is chosen.
+    // covers while its tab is chosen. The panel's settings list and the text in its details frame are hidden meanwhile
+    // (the frame stays: the page's details go in it), or the whole panel when they aren't found.
     UUserWidget? settingsScreen;
     USpicewoodTabListWidget? tabs;
     USpicewoodTabListWidget? subscribedTabs;
+    // The Mods tab's button: clicked while its page shows, the page goes back to the list (the tabs don't say so, as
+    // the tab is already chosen).
+    UCommonButtonBase? tabButton;
+    bool tabClicked;
     UWidget? settingsPanel;
+    UWidget? detailsView;
     ESlateVisibility panelVisibility;
+    ESlateVisibility listVisibility;
+    ESlateVisibility detailsVisibility;
     bool pageShown;
     ModsPage? page;
     GameLook? look;
@@ -98,8 +106,9 @@ public class GameMenus : AActor
         HidePage("another settings screen opened");
         settingsScreen = screen;
         look = GameLook.From(this, screen, manager != null && manager.PlainPage);
+        if (look != null) Note(look.Load());
         settingsList = GameUI.Find(screen, "ListView_Settings") as UGameSettingListView;
-        if (look != null) Note(look.Capture(settingsList));
+        detailsView = GameUI.Find(screen, "Details_Settings");
         tabs = GameUI.Find(screen, "TopSettingsTabs") as USpicewoodTabListWidget;
         settingsPanel = GameUI.Find(screen, "Settings_Panel");
         page?.RemoveFromParent();
@@ -118,6 +127,7 @@ public class GameMenus : AActor
             settingsScreen = null;
             settingsList = null;
             settingsPanel = null;
+            detailsView = null;
             tabs = null;
             tabChosen = false;
         }
@@ -133,8 +143,18 @@ public class GameMenus : AActor
         if (tabChosen)
         {
             tabChosen = false;
-            if (modsTabChosen) ShowPage();
+            if (modsTabChosen)
+            {
+                // Chosen again while a mod's page shows: back to the list.
+                if (pageShown) page?.BackToList();
+                ShowPage();
+            }
             else HidePage($"tab {otherTab} chosen");
+        }
+        if (tabClicked)
+        {
+            tabClicked = false;
+            if (pageShown) page?.BackToList();
         }
         if (pageShown && page != null)
         {
@@ -167,7 +187,14 @@ public class GameMenus : AActor
     {
         if (tabs == null || tabs.RegisteredTabs.Count == 0) return;
         var tag = GameUI.Tag(TabTag);
-        tabs.GetRegisteredTabInfo(tag, out var registered);
+        var info = tabs.GetRegisteredTabInfo(tag, out var registered);
+        if (registered && info.CreatedButton != null && info.CreatedButton != tabButton)
+        {
+            tabButton = info.CreatedButton;
+            // A chosen tab takes no clicks unless told to.
+            tabButton.SetIsInteractableWhenSelected(true);
+            tabButton.OnButtonBaseClicked += OnModsTabClicked;
+        }
         if (!registered)
         {
             if (!tabs.RegisterPseudoTab(tag, TabLabel))
@@ -190,6 +217,11 @@ public class GameMenus : AActor
         }
     }
 
+    void OnModsTabClicked(UCommonButtonBase? button)
+    {
+        if (pageShown) tabClicked = true;
+    }
+
     void OnTabSelected(FGameplayTag tabId)
     {
         Note("Tab chosen: " + tabId.TagName.ToString());
@@ -206,7 +238,7 @@ public class GameMenus : AActor
     {
         if (settingsPanel == null || manager == null) return;
         manager.MakingPage();
-        // The rows the last tab showed: more of the look to copy (each tab has other kinds of rows).
+        // The rows the last tab showed: the slider's look to copy (the game has no style asset for it).
         if (look != null) Note(look.Capture(settingsList));
         if (page == null)
         {
@@ -224,9 +256,18 @@ public class GameMenus : AActor
         }
         if (!pageShown)
         {
-            panelVisibility = settingsPanel.GetVisibility();
-            settingsPanel.SetRenderOpacity(0);
-            settingsPanel.SetVisibility(ESlateVisibility.HitTestInvisible);
+            if (SplitPanel())
+            {
+                listVisibility = settingsList!.GetVisibility();
+                detailsVisibility = detailsView!.GetVisibility();
+                Cover(settingsList);
+                Cover(detailsView);
+            }
+            else
+            {
+                panelVisibility = settingsPanel.GetVisibility();
+                Cover(settingsPanel);
+            }
             var added = AddPage();
             pageShown = true;
             shownAt = World.RealTime(this);
@@ -252,6 +293,24 @@ public class GameMenus : AActor
     double shownAt;
     bool checkedShown;
 
+    /// <summary>Whether the page goes over the settings list and the details apart (else over the whole panel).</summary>
+    bool SplitPanel() =>
+        settingsList != null && detailsView != null && UKismetSystemLibrary.IsValid(settingsList) && UKismetSystemLibrary.IsValid(detailsView);
+
+    /// <summary>Makes a part of the settings screen invisible and not take clicks, under the page.</summary>
+    static void Cover(UWidget? widget)
+    {
+        widget?.SetRenderOpacity(0);
+        widget?.SetVisibility(ESlateVisibility.HitTestInvisible);
+    }
+
+    static void Uncover(UWidget? widget, ESlateVisibility visibility)
+    {
+        if (widget == null || !UKismetSystemLibrary.IsValid(widget)) return;
+        widget.SetRenderOpacity(1);
+        widget.SetVisibility(visibility);
+    }
+
     /// <summary>Takes the page off and shows the settings panel again.</summary>
     void HidePage(string why)
     {
@@ -259,11 +318,12 @@ public class GameMenus : AActor
         Note("Mods tab: page taken off: " + why);
         pageShown = false;
         if (page != null && UKismetSystemLibrary.IsValid(page)) page.RemoveFromParent();
-        if (settingsPanel != null && UKismetSystemLibrary.IsValid(settingsPanel))
+        if (SplitPanel())
         {
-            settingsPanel.SetRenderOpacity(1);
-            settingsPanel.SetVisibility(panelVisibility);
+            Uncover(settingsList, listVisibility);
+            Uncover(detailsView, detailsVisibility);
         }
+        else Uncover(settingsPanel, panelVisibility);
     }
 
     /// <summary>Keeps the page on the settings panel's place on screen (it can move: the screen animates in, resizes).</summary>
@@ -278,6 +338,16 @@ public class GameMenus : AActor
         var placed = new FVector2D { X = bottomRight.X - topLeft.X, Y = bottomRight.Y - topLeft.Y };
         page.SetPositionInViewport(topLeft, false);
         page.SetDesiredSizeInViewport(placed);
+        // The list where the game's list is, the details in its details frame; or the panel's left two thirds and the
+        // rest, when they aren't found.
+        if (SplitPanel() && Area(settingsList, topLeft, out var listAt, out var listSize) && Area(detailsView, topLeft, out var detailsAt, out var detailsSize))
+            page.Arrange(listAt, listSize, detailsAt, detailsSize);
+        else
+        {
+            var listWidth = placed.X * 2 / 3;
+            page.Arrange(new FVector2D { X = 40, Y = 24 }, new FVector2D { X = listWidth - 80, Y = placed.Y - 48 },
+                new FVector2D { X = listWidth, Y = 24 }, new FVector2D { X = placed.X - listWidth - 40, Y = placed.Y - 48 });
+        }
         if (!placedLogged)
         {
             placedLogged = true;
@@ -286,6 +356,22 @@ public class GameMenus : AActor
     }
 
     bool placedLogged;
+
+    /// <summary>Where a widget is on screen, from a point (the page's top left), in the viewport's units.</summary>
+    bool Area(UWidget? widget, FVector2D origin, out FVector2D at, out FVector2D size)
+    {
+        at = new FVector2D();
+        size = new FVector2D();
+        if (widget == null) return false;
+        var geometry = widget.GetCachedGeometry();
+        var local = USlateBlueprintLibrary.GetLocalSize(geometry);
+        if (local.X <= 0 || local.Y <= 0) return false;
+        USlateBlueprintLibrary.LocalToViewport(this, geometry, new FVector2D(), out var topLeftPixels, out var topLeft);
+        USlateBlueprintLibrary.LocalToViewport(this, geometry, local, out var bottomRightPixels, out var bottomRight);
+        at = new FVector2D { X = topLeft.X - origin.X, Y = topLeft.Y - origin.Y };
+        size = new FVector2D { X = bottomRight.X - topLeft.X, Y = bottomRight.Y - topLeft.Y };
+        return true;
+    }
 
     void OnLobby(UUserWidget widget)
     {

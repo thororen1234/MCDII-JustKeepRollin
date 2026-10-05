@@ -25,7 +25,6 @@ public class ModManager : AActor
     const string ModInfoName = "ModInfo";
     // The shared mod interface lives in this folder, which BetterBlueprintLoader provides: it's not a mod.
     const string InterfacesFolder = "BlueprintLoader";
-    const string RestartKey = "F12";
     // Mods start once the player's character is there and set up: many do their work once, when they start, on the
     // character (its stats, its abilities). Levels without one (the main menu) start them after the longest wait.
     const float WaitInterval = 0.25f;
@@ -36,6 +35,7 @@ public class ModManager : AActor
     public const string MenuLabelSetting = "menu_label";
     public const string MenuButtonSetting = "menu_button";
     public const string RestartSetting = "restart";
+    public const string RestartKeySetting = "restart_key";
 
     LoaderSettings? settings;
     // Per mod, in start order: its package (/Game/Mods/X/ModActor, also for mods without one), its folder, its ModInfo,
@@ -135,7 +135,9 @@ public class ModManager : AActor
         Flush();
         var controller = World.PlayerController(this);
         if (controller == null) return;
-        if (controller.WasInputKeyJustPressed(new FKey { KeyName = RestartKey })) Restart();
+        // The Restart Mods Key setting: F12 unless changed. A key left empty is never pressed.
+        if (!GetKeybind(Unreal.ModName, RestartKeySetting, out var key, out var secondary)) return;
+        if (controller.WasInputKeyJustPressed(key) || controller.WasInputKeyJustPressed(secondary)) Restart();
     }
 
     /// <summary>Finds the mods and starts them, in the saved order.</summary>
