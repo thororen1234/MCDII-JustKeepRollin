@@ -139,6 +139,25 @@ public class EmotePlayer : UObject
             return;
         }
         Apply(ticks);
+        KeepFollowing();
+    }
+
+    /// <summary>
+    /// Meshes set to follow the body during the emote follow the posed mesh instead. Other mods set theirs to follow the
+    /// body when they like (Custom Skin Loader's eyes and mouth, on a timer), and the body follows the posed mesh while
+    /// an emote plays: a mesh following it would keep its pose from before the emote (the eyes floating off the head).
+    /// </summary>
+    void KeepFollowing()
+    {
+        if (character == null || mesh == null || pose == null) return;
+        foreach (var component in character.K2_GetComponentsByClass(Unreal.ClassOf<USkinnedMeshComponent>()))
+        {
+            if (component is not USkinnedMeshComponent skinned || skinned == mesh || skinned == pose) continue;
+            if (skinned.LeaderPoseComponent.Get() != mesh) continue;
+            skinned.SetLeaderPoseComponent(pose, true, false);
+            // Given back to the body when the emote ends.
+            if (!followers.Contains(skinned)) followers.Add(skinned);
+        }
     }
 
     /// <summary>Finds the character, its bones and the poseable mesh: again whenever the character changes.</summary>
