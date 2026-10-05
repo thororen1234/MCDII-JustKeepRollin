@@ -55,6 +55,9 @@ public class SkinSwapper : UObject
     // Every texture this mod made, to tell them from the game's: a copy of the character the game makes while a custom
     // skin is on starts with it, and putting that one back when the skin changes would bring the last skin back.
     List<UTexture> ours = new();
+    // The eyes and mouth that move with the face, for skins with them (see FaceParts), and which skins have them.
+    FaceParts? face;
+    Dictionary<int, bool> movingFaces = new();
     // The game's skin as found on the character, put back on copies that only ever had a custom one.
     UTexture? gameSkin;
     UTexture? gameMres;
@@ -88,6 +91,7 @@ public class SkinSwapper : UObject
         var swapper = UGameplayStatics.SpawnObject(Unreal.ClassOf<SkinSwapper>(), owner) as SkinSwapper;
         if (swapper == null) return null;
         swapper.owner = owner;
+        swapper.face = FaceParts.Create(swapper);
         swapper.settings = UGameplayStatics.LoadGameFromSlot(SettingsSlot, 0) as CustomSkinsSettings;
         if (swapper.settings == null)
             swapper.settings = UGameplayStatics.CreateSaveGameObject(Unreal.ClassOf<CustomSkinsSettings>()) as CustomSkinsSettings;
@@ -249,6 +253,12 @@ public class SkinSwapper : UObject
                 added.Add(instance);
             }
         }
+        // Eyes and mouth that move with the face, on the body, unless another mod gives it its own.
+        if (face == null || !movingFaces.ContainsKey(Skin) || !movingFaces[Skin] || FaceParts.HasOthers(actor)) return;
+        if (actor.GetComponentByClass(Unreal.ClassOf<USkeletalMeshComponent>()) is not USkeletalMeshComponent body) return;
+        if (UKismetSystemLibrary.GetPathName(body.GetSkinnedAsset()) != PlayerBody) return;
+        var skin = body.GetMaterial(0);
+        if (skin != null) face.Build(actor, body, skin);
     }
 
     /// <summary>Puts the skin on a material if it's a skin material.</summary>
@@ -276,6 +286,7 @@ public class SkinSwapper : UObject
     /// <summary>Gives the character the game's skin back.</summary>
     void Restore()
     {
+        face?.Clear();
         for (int i = 0; i < instances.Count; i++)
         {
             if (!UKismetSystemLibrary.IsValid(instances[i]) || instances[i].K2_GetTextureParameterValue(parameters[i]) != worn) continue;
@@ -328,6 +339,16 @@ public class SkinSwapper : UObject
         // Drawn every time: a render target can lose what was drawn on it, and the face with it.
         var target = withFaces[number];
         float pixel = width / 64f;
+        // A skin with eyes and mouth that move with the face (see FaceParts) has them, rather than the face block painted on.
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            UKismetRenderingLibrary.ClearRenderTarget2D(owner, target, new FLinearColor());
+            Draw(target, file, width, height, false);
+            if (!Solid(target, (int)((HeadFrontX + FaceSize / 2) * pixel), (int)((HeadFrontY + FaceSize / 2) * pixel))) continue;
+            movingFaces[number] = MovingFace(target, pixel);
+            if (movingFaces[number]) return target;
+            break;
+        }
         // Drawn again if it didn't take. The head's front is never see-through: if the copy has it so, the drawing
         // was lost (or the copy lost its alpha, and the character would be invisible in it).
         for (int attempt = 0; attempt < 3; attempt++)
@@ -341,6 +362,16 @@ public class SkinSwapper : UObject
         Log.Write($"Couldn't put the face on {number}.png: wearing it as it is");
         return file;
     }
+
+    /// <summary>Moves the eyes and mouth with the face. Call every frame.</summary>
+    public void UpdateFace() => face?.Update();
+
+    /// <summary>Whether a skin colours any of the moving eyes' and mouth's shapes: their pupils, and the mouths.</summary>
+    bool MovingFace(UTextureRenderTarget2D target, float pixel) =>
+        Any(target, pixel, 24, 6) || Any(target, pixel, 30, 6) || Any(target, pixel, 30, 7) || Any(target, pixel, 24, 0)
+        || Any(target, pixel, 24, 4) || Any(target, pixel, 24, 2) || Any(target, pixel, 24, 7) || Any(target, pixel, 26, 7);
+
+    bool Any(UTextureRenderTarget2D target, float pixel, int x, int y) => Solid(target, (int)((x + 0.5f) * pixel), (int)((y + 0.5f) * pixel));
 
     UTexture2D? File(int number)
     {

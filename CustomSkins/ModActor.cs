@@ -57,6 +57,7 @@ public class ModActor : AActor
 
     public override void ReceiveTick(float deltaSeconds)
     {
+        skins?.UpdateFace();
         var controller = World.PlayerController(this);
         if (controller == null || skins == null) return;
         if (controller.WasInputKeyJustPressed(new FKey { KeyName = NextKey }))
