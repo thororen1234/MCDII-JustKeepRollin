@@ -1,4 +1,4 @@
-<Project Sdk="NeoRuneExtended.Sdk/0.4.0">
+<Project Sdk="NeoRuneExtended.Sdk/0.4.1">
   <!--
     dotnet build compiles the mod and installs it into the game's Paks\~mods\JustKeepRollin folder.
     Close the game before building: it locks the mod files while running.

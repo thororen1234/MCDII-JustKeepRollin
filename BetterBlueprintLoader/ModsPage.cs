@@ -284,8 +284,6 @@ public class ModsPage : UUserWidget
         var button = UGameplayStatics.SpawnObject(Unreal.ClassOf<PageButton>(), tree) as PageButton;
         if (button == null) return widget;
         button.Setup(this, index, action);
-        // Not "none": Unreal names ignore case, and a variable named None can't be found (fixed in NeoRuneExtended after
-        // 0.4.0, which this is built with).
         var invisible = new FSlateBrush { DrawAs = ESlateBrushDrawType.NoDrawType };
         var hover = Look.Rounded(Ui.Color(1, 1, 1, 0.05f), Ui.Color(1, 1, 1, 0), 0, 2);
         button.SetStyle(new FButtonStyle { Normal = invisible, Hovered = hover, Pressed = hover, Disabled = invisible, NormalPadding = new FMargin(), PressedPadding = new FMargin() });
