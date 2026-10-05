@@ -10,10 +10,13 @@ namespace DragSalvage;
 
 /// <summary>
 /// In the salvage screen, hold the mouse on an item and drag across others to select them all, instead of clicking
-/// each one.
+/// each one. On a controller, hold A on an item and move across others.
 /// </summary>
 public class ModActor : AActor
 {
+    // An item the mod clicks can get the focus back the same way A does: that isn't A.
+    const double ClickEcho = 0.15;
+
     WidgetWatcher? panels;
     WidgetWatcher? slotWatcher;
     WidgetWatcher? entryWatcher;
@@ -24,6 +27,16 @@ public class ModActor : AActor
     // Items the current drag has been over, and the one to click next.
     List<UCommonButtonBase> dragged = new();
     UCommonButtonBase? pending;
+    // Controller. The game handles A itself, out of the mod's sight: the only sign of it is that the item with the
+    // focus loses it and gets it back at once, both when A goes down and when it comes up.
+    UCommonButtonBase? focused;
+    UCommonButtonBase? lostBy;
+    int lostAt = -1;
+    int frame;
+    bool aDown;
+    List<UCommonButtonBase> padDragged = new();
+    UCommonButtonBase? clicked;
+    double clickedAt = -1000;
 
     protected override void ReceiveBeginPlay()
     {
@@ -46,6 +59,44 @@ public class ModActor : AActor
         slots.Add(slot);
         if (panelShown) slot.SetClickMethod(EButtonClickMethod.MouseDown);
         DragCatcher.AddTo(slot, this);
+        slot.OnButtonBaseFocused += OnSlotFocused;
+        slot.OnButtonBaseUnfocused += OnSlotUnfocused;
+    }
+
+    void OnSlotUnfocused(UCommonButtonBase? slot)
+    {
+        if (slot != focused) return;
+        focused = null;
+        lostBy = slot;
+        lostAt = frame;
+    }
+
+    void OnSlotFocused(UCommonButtonBase? slot)
+    {
+        var bounced = slot != null && slot == lostBy && lostAt == frame;
+        focused = slot;
+        lostBy = null;
+        if (!panelShown || slot == null) return;
+        if (bounced)
+        {
+            if (slot == clicked && World.RealTime(this) - clickedAt < ClickEcho) return;
+            // A went down or came up on this item. Going down, the game marks it itself.
+            aDown = !aDown;
+            padDragged.Clear();
+            if (aDown) padDragged.Add(slot);
+            return;
+        }
+        // Moved onto another item with A held.
+        if (!aDown || padDragged.Contains(slot)) return;
+        padDragged.Add(slot);
+        // Clicked on the next tick, once the game has seen the item focused.
+        pending = slot;
+    }
+
+    void ResetPad()
+    {
+        aDown = false;
+        padDragged.Clear();
     }
 
     public bool Active => panelShown;
@@ -68,20 +119,28 @@ public class ModActor : AActor
 
     public override void ReceiveTick(float deltaSeconds)
     {
+        frame++;
         var shown = panel != null && UKismetSystemLibrary.IsValid(panel) && panel.IsVisible();
         if (shown != panelShown)
         {
             panelShown = shown;
+            ResetPad();
             for (int i = slots.Count - 1; i >= 0; i--)
             {
                 if (!UKismetSystemLibrary.IsValid(slots[i])) slots.RemoveAt(i);
                 else slots[i].SetClickMethod(shown ? EButtonClickMethod.MouseDown : EButtonClickMethod.DownAndUp);
             }
         }
+        if (focused != null && !UKismetSystemLibrary.IsValid(focused)) focused = null;
+        // The focus went somewhere other than an item (another tab, a button, a popup): A can't be tracked there.
+        if (focused == null) ResetPad();
         if (pending == null) return;
         var slot = pending;
         pending = null;
-        if (shown && UKismetSystemLibrary.IsValid(slot)) slot.HandleButtonClicked();
+        if (!shown || !UKismetSystemLibrary.IsValid(slot)) return;
+        clicked = slot;
+        clickedAt = World.RealTime(this);
+        slot.HandleButtonClicked();
     }
 }
 

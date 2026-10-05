@@ -5,6 +5,8 @@ Select items to salvage by dragging over them!
 
 In the salvage screen, hold the left mouse button on an item and drag across other items to select them all, instead of clicking each one. Dragging over an item that is already selected unselects it.
 
+On a controller, hold A on an item and move across other items to select them all the same way.
+
 REQUIREMENTS
 ------------
 

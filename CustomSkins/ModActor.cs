@@ -74,7 +74,6 @@ public class ModActor : AActor
         if (controller.WasInputKeyJustPressed(new FKey { KeyName = InfoKey }))
         {
             skins.LogInfo();
-            UiSpy.Start(this);
             Log.Show(this);
         }
     }
@@ -128,12 +127,10 @@ public class ModActor : AActor
         if (row == null) return;
         rowIn = collectibles;
         row.RemoveFromParent();
-        LogTree("Collectibles screen widgets:", collectibles.WidgetTree?.RootWidget);
         grid = Find(collectibles.WidgetTree?.RootWidget, ItemGridName);
         // The capes scroll in a list inside the item grid: the row goes at its end, under the last cape.
         if (grid is UUserWidget gridWidget)
         {
-            LogTree("Item grid widgets:", gridWidget.WidgetTree?.RootWidget);
             if (FindScrollBox(gridWidget.WidgetTree?.RootWidget) is UScrollBox scroll)
             {
                 floating = false;
@@ -169,40 +166,6 @@ public class ModActor : AActor
         row.ShowAt(new FVector2D(), new FVector2D(), ScreenWidget.AboveGameUI);
         FollowGrid();
         Log.Write($"Skin row shown over the Collectibles screen (item grid {(grid == null ? "not found" : "not in a list")})");
-    }
-
-    /// <summary>Logs the widgets under a widget, indented by depth: where the row could go.</summary>
-    static void LogTree(string title, UWidget? root)
-    {
-        var lines = new List<string>();
-        var queue = new List<UWidget>();
-        var depths = new List<int>();
-        if (root != null)
-        {
-            queue.Add(root);
-            depths.Add(0);
-        }
-        lines.Add(title);
-        // Depth first, so children follow their parent.
-        while (queue.Count > 0 && lines.Count < 200)
-        {
-            var widget = queue[queue.Count - 1];
-            var depth = depths[depths.Count - 1];
-            queue.RemoveAt(queue.Count - 1);
-            depths.RemoveAt(depths.Count - 1);
-            var indent = "";
-            for (int d = 0; d < depth; d++) indent += "  ";
-            lines.Add($"{indent}{UKismetSystemLibrary.GetObjectName(widget)} ({UKismetSystemLibrary.GetClassDisplayName(UGameplayStatics.GetObjectClass(widget))})");
-            if (widget is not UPanelWidget panel) continue;
-            for (int c = panel.GetChildrenCount() - 1; c >= 0; c--)
-            {
-                var child = panel.GetChildAt(c);
-                if (child == null) continue;
-                queue.Add(child);
-                depths.Add(depth + 1);
-            }
-        }
-        Log.WriteAll(lines);
     }
 
     /// <summary>The first scroll box under a widget, or null.</summary>
