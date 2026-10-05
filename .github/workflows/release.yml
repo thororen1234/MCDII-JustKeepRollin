@@ -94,6 +94,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           HAS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY != '' }}
+          NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
           RELEASE_MOD: ${{ steps.info.outputs.mod }}
           RELEASE_TAG: ${{ steps.info.outputs.tag }}
         run: |
@@ -107,8 +108,13 @@ jobs:
           fi
           echo "upload=true" >> "$GITHUB_OUTPUT"
           echo "file_id=$file_id" >> "$GITHUB_OUTPUT"
-          mod_id="$(jq -r '.mod_id // 0' "$config")"
-          if [ "$mod_id" = "0" ]; then mod_id=""; fi
+          game_mod_id="$(jq -r '.mod_id // 0' "$config")"
+          mod_id=""
+          if [ "$game_mod_id" != "0" ]; then
+            mod_id="$(curl -sf -H "apikey: $NEXUSMODS_API_KEY" -H "User-Agent: MCDII-Mods-release" \
+              "https://api.nexusmods.com/v3/games/minecraftdungeons2/mods/$game_mod_id" | jq -r '.data.id // .id // empty')" || mod_id=""
+            if [ -z "$mod_id" ]; then echo "::warning::Couldn't look up the Nexus Mods id of mod $game_mod_id: uploading without a changelog"; fi
+          fi
           echo "mod_id=$mod_id" >> "$GITHUB_OUTPUT"
           if [ -n "$mod_id" ]; then
             {
