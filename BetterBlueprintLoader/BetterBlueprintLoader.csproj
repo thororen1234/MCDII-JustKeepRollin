@@ -1,9 +1,13 @@
-<Project Sdk="NeoRune.Sdk/0.3.0">
+<Project Sdk="NeoRuneExtended.Sdk/0.4.0">
+  <PropertyGroup>
+    <Version>2.0.0</Version>
+    <NeoRuneModDescription>Loads your mods, with a Mods tab in the game's settings: every mod's details, its settings page, turning it on and off, and the order mods start in. Turns off a mod that crashed the game while starting.</NeoRuneModDescription>
+  </PropertyGroup>
   <!--
     After NeoRune packs the mod: adds the R1 hook to its pak. R1 is the game feature data that the game loads with every
     level; ours also has the game add LoaderComponent to the player controller. Runs before NeoRune installs the pak.
   -->
   <Target Name="BetterBlueprintLoaderHook" AfterTargets="NeoRuneCompile" BeforeTargets="NeoRuneInstall" Condition="'$(DesignTimeBuild)' != 'true'">
-    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)\..\tools\BetterBlueprintLoaderHook\BetterBlueprintLoaderHook.csproj&quot; -c Release -- &quot;$(NeoRuneOutDir.TrimEnd('\'))&quot; $(NeoRuneModName) &quot;$(NeoRuneSdkRoot)tools&quot;" />
+    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)\..\tools\BetterBlueprintLoaderHook\BetterBlueprintLoaderHook.csproj&quot; -c Release -p:NeoRuneTools=&quot;$(NeoRuneSdkRoot)tools&quot; -- &quot;$(NeoRuneOutDir.TrimEnd('\'))&quot; $(NeoRuneModName) &quot;$(NeoRuneSdkRoot)tools&quot;" />
   </Target>
 </Project>

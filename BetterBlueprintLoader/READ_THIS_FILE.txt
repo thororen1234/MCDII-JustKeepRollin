@@ -3,21 +3,31 @@ BETTER BLUEPRINT LOADER
 
 Loads blueprint mods for Minecraft Dungeons II!
 
-Mods in your ~mods folder start automatically every time a level loads. It works with mods made for Blueprint Loader, so install this instead of Blueprint Loader, not as well as it: both change the same game file, and only one of them can work.
+Mods in your ~mods folder start automatically every time a level loads, with their mod info and settings pages. Use it as your only mod loader: loaders change the same game file, and only one of them can work.
 
-The main menu shows how many mods are running, in its bottom left corner.
+MODS TAB
+--------
 
-Open the mod list with the Mods button (on the main menu, bottom left, or in the game menu's bar, after System), or press F10: every mod it found, whether it's running and how long it took to start.
-    Turn off / Turn on   Stops or starts a mod right away. Remembered for next time.
-    Up / Down            Changes the order mods start in. Counts from the next level, or press Restart mods.
-    Mod options          Mods that have options show them under their name: click one to switch it.
-    Restart mods         Stops every mod and starts them again (also F12). Handy when making mods.
+Open the game's Settings and choose the Mods tab, or click MODS on the main menu. In game: Esc, Settings, Mods.
 
-If the game crashes while a mod is starting, BetterBlueprintLoader turns that mod off, and tells you on the main menu the next time. Turn it back on in the mod list when the mod is updated.
+On the left are BetterBlueprintLoader and every mod it found. Choose one to see its page:
+    Its name, version, author and description, from the mod.
+    Whether it's running and how long it took to start.
+    Turn Off / Turn On     Stops or starts the mod right away. Remembered for next time.
+    Start Earlier / Later  Changes the order mods start in. Counts from the next level, or Restart Mods.
+    Its settings           Mods with a settings page show it here. Settings are saved for you.
+    Reset Settings         Puts the mod's settings back to their defaults.
 
-If the game updates, the mod list says so: if a level then crashes while loading, BetterBlueprintLoader needs an update too.
+BetterBlueprintLoader's own page has:
+    Main Menu Label        The line at the bottom left of the main menu: how many mods are running.
+    Main Menu Mods Button  The MODS button on the main menu.
+    Restart Mods           Stops every mod and starts them again (also F12). Handy when making mods.
 
-Turning a mod off stops it, but what it already changed in the game (like WASDControls turning off click-to-move) can stay until the next level.
+If the game crashes while a mod is starting, BetterBlueprintLoader turns that mod off and tells you on the main menu the next time. Turn it back on in the Mods tab when the mod is updated.
+
+If the game updates, the Mods tab says so: if a level then crashes while loading, BetterBlueprintLoader needs an update too.
+
+Turning a mod off stops it, but what it already changed in the game (like controls) can stay until the next level.
 
 INSTALL
 -------
@@ -30,7 +40,7 @@ INSTALL
 
 3. Create a folder called ~mods inside the Paks folder if there is not one already.
 
-4. If you have Blueprint Loader, delete its folder from ~mods.
+4. If you have another mod loader, delete its folder from ~mods.
 
 5. Extract this zip into ~mods, so the files end up in: Paks\~mods\BetterBlueprintLoader
 
@@ -42,10 +52,4 @@ Delete the BetterBlueprintLoader folder from ~mods. Your other mods stop loading
 FOR MOD MAKERS
 --------------
 
-A mod is a ModActor class in /Game/Mods/YourMod, as NeoRune and Blueprint Loader mods are: nothing to change.
-
-To give your mod on/off options in the mod list, copy ModOptions.cs (from the source) into your NeoRune mod and ask for an option's value when you need it, from your ModActor:
-
-    if (ModOptions.Toggle(this, "Show hint", true)) ...
-
-The player's choice is remembered by the loader. Without BetterBlueprintLoader it always gives the default.
+A mod is a ModActor class in /Game/Mods/YourMod. Its details and settings page come from /Game/Mods/YourMod/ModInfo, and it gets its settings through the BPI_ModSettings interface; BFL_ModSettings saves and reads its own values. With NeoRuneExtended: NeoRuneModTitle/Version/Author/Description in the project, [ModSetting.*] attributes on ModActor, and IModSettings.

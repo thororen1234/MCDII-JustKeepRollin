@@ -1,11 +1,21 @@
+using NeoRune;
 using UE.Engine;
 
 namespace BetterBlueprintLoader;
 
 /// <summary>
-/// NeoRune packs a mod only with a ModActor. The loader is LoaderComponent: this starts with the other mods and does
-/// nothing.
+/// NeoRuneExtended packs a mod only with a ModActor. The loader is LoaderComponent, and it doesn't start itself: this is
+/// here for its settings page in the Mods tab, which ModManager reads directly.
 /// </summary>
-public class ModActor : AActor
+[ModSetting.Heading("Main menu")]
+[ModSetting.Toggle(ModManager.MenuLabelSetting, "Main Menu Label", Default = true,
+    Description = "Shows how many mods are running, and a mod that crashed the game, at the bottom left of the main menu.")]
+[ModSetting.Toggle(ModManager.MenuButtonSetting, "Main Menu Mods Button", Default = true,
+    Description = "Adds a MODS button to the main menu, which opens this tab.")]
+[ModSetting.Heading("Mods")]
+[ModSetting.EventButton(ModManager.RestartSetting, "Restart Mods", ButtonText = "Restart",
+    Description = "Stops every running mod and starts them again, in their order (also F12). Handy when making mods.")]
+[ModSetting.Text("If the game crashes while a mod is starting, BetterBlueprintLoader turns that mod off and tells you on the main menu. Turn it back on here when the mod is updated.")]
+public class ModActor : AActor, IModSettings
 {
 }

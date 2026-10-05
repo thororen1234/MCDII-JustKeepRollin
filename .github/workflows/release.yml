@@ -53,7 +53,8 @@ jobs:
         shell: bash
         env:
           RELEASE_MOD: ${{ steps.info.outputs.mod }}
-        run: dotnet build "$RELEASE_MOD/$RELEASE_MOD.csproj" -c Release -p:NeoRuneInstall=false
+          RELEASE_VERSION: ${{ steps.info.outputs.version }}
+        run: dotnet build "$RELEASE_MOD/$RELEASE_MOD.csproj" -c Release -p:NeoRuneInstall=false -p:Version="$RELEASE_VERSION"
 
       - name: Package
         id: package

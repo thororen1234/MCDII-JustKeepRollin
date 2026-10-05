@@ -1,0 +1,7 @@
+<Project>
+  <!-- Shown for every mod in the Mods tab of the game's settings (BetterBlueprintLoader or Blueprint Loader 2.0). -->
+  <PropertyGroup>
+    <NeoRuneModAuthor>thororen</NeoRuneModAuthor>
+    <NeoRuneModAuthorUrl>https://github.com/thororen1234/MCDII-Mods</NeoRuneModAuthorUrl>
+  </PropertyGroup>
+</Project>

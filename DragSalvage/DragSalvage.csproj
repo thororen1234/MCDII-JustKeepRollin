@@ -1,1 +1,7 @@
-<Project Sdk="NeoRune.Sdk/0.3.0" />
+<Project Sdk="NeoRuneExtended.Sdk/0.4.0">
+  <PropertyGroup>
+    <Version>1.0.2</Version>
+    <NeoRuneModTitle>Drag Salvage</NeoRuneModTitle>
+    <NeoRuneModDescription>Select items to salvage by dragging over them.</NeoRuneModDescription>
+  </PropertyGroup>
+</Project>
