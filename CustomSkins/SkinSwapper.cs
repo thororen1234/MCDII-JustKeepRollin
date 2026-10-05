@@ -186,7 +186,7 @@ public class SkinSwapper : UObject
             Dress(character);
             if (instances.Count == 0)
             {
-                Log.Write("Found no skin material on the character: press F9 in game and send the log");
+                Log.Write("Found no skin material on the character: press the Show Info key (F9 unless changed) in game and send the log");
                 reported = character;
                 return;
             }

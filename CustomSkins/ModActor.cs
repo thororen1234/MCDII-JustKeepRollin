@@ -12,14 +12,28 @@ namespace CustomSkins;
 
 /// <summary>
 /// Custom Skins: wear your own skin PNGs, switched live from the inventory's Collectibles screen or with F6. Only you
-/// see them: everyone else sees the skin picked in the game's own menu, so that one is the fallback.
+/// see them: everyone else sees the skin picked in the game's own menu, so that one is the fallback. The keys are
+/// settings in BetterBlueprintLoader's Mods tab.
 /// </summary>
-public class ModActor : AActor
+[ModSetting.Heading("Keys")]
+[ModSetting.Keybind(NextSetting, "Next Skin", Default = DefaultNextKey,
+    Description = "Wears the next skin in the Skins folder; after the last one, the game's skin again.")]
+[ModSetting.Keybind(ReloadSetting, "Reload Skins", Default = DefaultReloadKey,
+    Description = "Reads the skin files again, to see changes you just saved in your image editor.")]
+[ModSetting.Keybind(ExportSetting, "Save Game Skin", Default = DefaultExportKey,
+    Description = "Saves the skin picked in the game's menu as a PNG in the Skins folder's _game folder, to start your own from.")]
+[ModSetting.Keybind(InfoSetting, "Show Info", Default = DefaultInfoKey,
+    Description = "Writes what the mod knows about your character to the log and shows it. If something doesn't work, press it in game, press Copy and send the log.")]
+public class ModActor : AActor, IModSettings
 {
-    const string NextKey = "F6";
-    const string ReloadKey = "F7";
-    const string ExportKey = "F8";
-    const string InfoKey = "F9";
+    const string NextSetting = "next_key";
+    const string ReloadSetting = "reload_key";
+    const string ExportSetting = "export_key";
+    const string InfoSetting = "info_key";
+    const string DefaultNextKey = "F6";
+    const string DefaultReloadKey = "F7";
+    const string DefaultExportKey = "F8";
+    const string DefaultInfoKey = "F9";
     // The game puts its skin back when the character or gear changes: this often, the custom one goes back on.
     const float CheckInterval = 1f;
     const float MenuInterval = 0.25f;
@@ -55,23 +69,72 @@ public class ModActor : AActor
         if (menuWatcher != null) menuWatcher.Fired += WatchMenu;
     }
 
+    // The keys, each setting's two (the second empty unless set in the Mods tab).
+    FKey nextKey = new FKey { KeyName = DefaultNextKey };
+    FKey nextKey2 = new FKey();
+    FKey reloadKey = new FKey { KeyName = DefaultReloadKey };
+    FKey reloadKey2 = new FKey();
+    FKey exportKey = new FKey { KeyName = DefaultExportKey };
+    FKey exportKey2 = new FKey();
+    FKey infoKey = new FKey { KeyName = DefaultInfoKey };
+    FKey infoKey2 = new FKey();
+
+    public void OnKeybindChanged(string id, FKey key, FKey secondaryKey)
+    {
+        if (id == NextSetting)
+        {
+            nextKey = key;
+            nextKey2 = secondaryKey;
+        }
+        else if (id == ReloadSetting)
+        {
+            reloadKey = key;
+            reloadKey2 = secondaryKey;
+        }
+        else if (id == ExportSetting)
+        {
+            exportKey = key;
+            exportKey2 = secondaryKey;
+        }
+        else if (id == InfoSetting)
+        {
+            infoKey = key;
+            infoKey2 = secondaryKey;
+        }
+    }
+
+    public void OnSettingsReset()
+    {
+        nextKey = new FKey { KeyName = DefaultNextKey };
+        reloadKey = new FKey { KeyName = DefaultReloadKey };
+        exportKey = new FKey { KeyName = DefaultExportKey };
+        infoKey = new FKey { KeyName = DefaultInfoKey };
+        nextKey2 = new FKey();
+        reloadKey2 = new FKey();
+        exportKey2 = new FKey();
+        infoKey2 = new FKey();
+    }
+
+    static bool Pressed(APlayerController controller, FKey key, FKey secondary) =>
+        controller.WasInputKeyJustPressed(key) || controller.WasInputKeyJustPressed(secondary);
+
     public override void ReceiveTick(float deltaSeconds)
     {
         skins?.UpdateFace();
         var controller = World.PlayerController(this);
         if (controller == null || skins == null) return;
-        if (controller.WasInputKeyJustPressed(new FKey { KeyName = NextKey }))
+        if (Pressed(controller, nextKey, nextKey2))
         {
             skins.Next();
             row?.Refresh();
         }
-        if (controller.WasInputKeyJustPressed(new FKey { KeyName = ReloadKey }))
+        if (Pressed(controller, reloadKey, reloadKey2))
         {
             skins.Reload();
             row?.Refresh();
         }
-        if (controller.WasInputKeyJustPressed(new FKey { KeyName = ExportKey })) skins.ExportGameSkin();
-        if (controller.WasInputKeyJustPressed(new FKey { KeyName = InfoKey }))
+        if (Pressed(controller, exportKey, exportKey2)) skins.ExportGameSkin();
+        if (Pressed(controller, infoKey, infoKey2))
         {
             skins.LogInfo();
             Log.Show(this);

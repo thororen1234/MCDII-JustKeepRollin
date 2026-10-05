@@ -3,7 +3,7 @@ EMOTICONS
 
 The emotes from the Minecraft mod Emoticons, in Minecraft Dungeons II!
 
-Hold B to open the emote wheel, point the mouse at an emote and let go of B to play it. You can also tap B and click an emote. Scroll the mouse wheel for more emotes. Walking stops an emote, or press Stop in the middle of the wheel. There are 34 emotes, from Electro Shuffle and Gangnam Style to Facepalm, Salute and T-Pose.
+Hold B to open the emote wheel, point the mouse at an emote and let go of B to play it. You can also tap B and click an emote. Scroll the mouse wheel for more emotes. To use another key than B, open the game's Settings, Mods, Emoticons and change the Emote Wheel Key. Walking stops an emote, or press Stop in the middle of the wheel. There are 34 emotes, from Electro Shuffle and Gangnam Style to Facepalm, Salute and T-Pose.
 
 Only you can see your emotes: other players see you standing still. The emotes have no music, particles or props (like the popcorn), only the animations.
 

@@ -13,6 +13,8 @@ Keys:
     F8  Save the skin picked in the game's menu as a PNG in Skins\_game, to start your own from
     F9  Write what the mod knows about your character to the log and show it on screen. If something doesn't work, press F9 in game, press Copy and send the log.
 
+To change these keys, or add a second key (like a controller button) to any of them, open the game's Settings, Mods, Custom Skins.
+
 A skin can have its own <number>_MRES.png next to it (red metallic, green roughness, blue glow, alpha subsurface). Without one, it gets a plain one.
 
 Only you can see your custom skin. Everyone else sees the skin you picked in the game's own menu, so pick the one you would like them to see.
