@@ -7,7 +7,7 @@ Mods in your ~mods folder start automatically every time a level loads. It works
 
 The main menu shows how many mods are running, in its bottom left corner.
 
-Press F10 for the mod list: every mod it found, whether it's running and how long it took to start.
+Open the mod list with the Mods button (on the main menu, bottom left, or in the game menu's bar, after System), or press F10: every mod it found, whether it's running and how long it took to start.
     Turn off / Turn on   Stops or starts a mod right away. Remembered for next time.
     Up / Down            Changes the order mods start in. Counts from the next level, or press Restart mods.
     Mod options          Mods that have options show them under their name: click one to switch it.

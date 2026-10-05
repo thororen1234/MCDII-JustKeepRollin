@@ -16,6 +16,7 @@ namespace BetterBlueprintLoader;
 public class ModList : ScreenWidget
 {
     const float Width = 1080;
+    const int ViewportLayer = 1000;
     const float Height = 700;
     // A row's name and status columns: fixed, so long names don't push into the buttons.
     const float NameWidth = 320;
@@ -32,10 +33,11 @@ public class ModList : ScreenWidget
         list.manager = manager;
         if (!list.Build()) return null;
         list.Refresh();
-        // Centred like Emoticons' wheel: the screen slot gets the list's size, then the anchors and alignment again,
+        // On the whole viewport, above everything: on the player's screen, the game's menu (where its Mods button is)
+        // covers it. Centred like Emoticons' wheel: the slot gets the list's size, then the anchors and alignment again,
         // since setting the size resets them to the top left.
         var middle = new FVector2D { X = 0.5f, Y = 0.5f };
-        list.ShowAt(new FVector2D(), middle, ScreenWidget.AboveGameUI);
+        list.AddToViewport(ViewportLayer);
         list.SetDesiredSizeInViewport(new FVector2D { X = Width, Y = Height });
         list.SetAnchorsInViewport(new FAnchors { Minimum = middle, Maximum = middle });
         list.SetAlignmentInViewport(middle);

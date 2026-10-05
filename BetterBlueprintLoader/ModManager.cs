@@ -5,6 +5,7 @@ using UE.CoreUObject;
 using UE.Engine;
 using UE.InputCore;
 using UE.SWCorePlatform;
+using UE.SlateCore;
 using UE.UMG;
 
 namespace BetterBlueprintLoader;
@@ -15,7 +16,7 @@ namespace BetterBlueprintLoader;
 /// </summary>
 public class ModManager : AActor
 {
-    public const string Version = "1.0";
+    public const string Version = "1.0.1";
     // The game this loader's R1 hook was made from, as the game gives its version ("50349472:releases/r2:<commit>"):
     // another build may have changed R1.
     const string BuiltForGame = "1.1.1.0";
@@ -25,8 +26,11 @@ public class ModManager : AActor
     const string ModActorName = "ModActor";
     const string ListKey = "F10";
     const string RestartKey = "F12";
-    // Mods start just after the level does, not while the player controller is still starting.
-    const float StartDelay = 0.1f;
+    // Mods start once the player's character is there and set up: many do their work once, when they start, on the
+    // character (its stats, its abilities). Levels without one (the main menu) start them after the longest wait.
+    const float WaitInterval = 0.25f;
+    const double SetUpTime = 0.5;
+    const double LongestWait = 10;
 
     LoaderSettings? settings;
     // Per mod, in start order: its package, its class once loaded, its actor while running, its state and how long
@@ -43,6 +47,12 @@ public class ModManager : AActor
     public string Stopped = "";
     ModList? list;
     MenuLabel? label;
+    // The game's menu (Inventory, Collectibles... System): a Mods button goes in its bar, after the next tab prompt.
+    const string GameMenuClass = "W_InGameNavigation_Activatable";
+    PausableTimer? menuWatcher;
+    UUserWidget? menuWithButton;
+    double waitStarted;
+    double characterSince;
 
     protected override void ReceiveBeginPlay()
     {
@@ -64,20 +74,89 @@ public class ModManager : AActor
         var game = UGameVersion.BuildVersion();
         if (game != "" && !UKismetStringLibrary.StartsWith(game, BuiltForBuild, ESearchCase.CaseSensitive))
             Warning = $"The game has updated since BetterBlueprintLoader was made (for {BuiltForGame}): if a level crashes while loading, update it.";
-        Timer.Start(this, nameof(StartAll), StartDelay, loop: false);
+        // The game's menu pauses the game: watched with a timer that runs anyway.
+        menuWatcher = PausableTimer.Start(this, 0.5f, loop: true);
+        if (menuWatcher != null) menuWatcher.Fired += WatchGameMenu;
+        waitStarted = World.RealTime(this);
+        characterSince = -1;
+        Timer.Start(this, nameof(WaitForCharacter), WaitInterval, loop: true);
+    }
+
+    void WaitForCharacter()
+    {
+        var now = World.RealTime(this);
+        if (World.Player(this) is ACharacter)
+        {
+            if (characterSince < 0) characterSince = now;
+            if (now - characterSince < SetUpTime) return;
+        }
+        // Menus have no character to wait for.
+        else if (now - waitStarted < LongestWait && !UKismetStringLibrary.StartsWith(World.LevelName(this), "Menu", ESearchCase.IgnoreCase)) return;
+        Timer.Stop(this, nameof(WaitForCharacter));
+        StartAll();
     }
 
     public override void ReceiveTick(float deltaSeconds)
     {
         var controller = World.PlayerController(this);
         if (controller == null) return;
-        if (controller.WasInputKeyJustPressed(new FKey { KeyName = ListKey }))
-        {
-            if (list != null) CloseList();
-            else list = ModList.Open(this);
-        }
+        if (controller.WasInputKeyJustPressed(new FKey { KeyName = ListKey })) ToggleList();
         if (controller.WasInputKeyJustPressed(new FKey { KeyName = RestartKey })) Restart();
     }
+
+    public void ToggleList()
+    {
+        if (list != null) CloseList();
+        else list = ModList.Open(this);
+    }
+
+    /// <summary>Puts a Mods button in the game's menu bar, after its next tab prompt (E), when the menu opens.</summary>
+    void WatchGameMenu()
+    {
+        UWidgetBlueprintLibrary.GetAllWidgetsOfClass(this, out var widgets, Unreal.ClassOf<UUserWidget>(), false);
+        UUserWidget? menu = null;
+        foreach (var widget in widgets)
+            if (widget != null && ClassPath(widget).Contains(GameMenuClass)) menu = widget;
+        if (menu == null || menu == menuWithButton) return;
+        menuWithButton = menu;
+        var next = FindNextTab(menu);
+        var tree = menu.WidgetTree;
+        if (next != null && next.GetParent() is UHorizontalBox bar && tree != null)
+        {
+            var button = ModsButton.Make(tree, this, "MODS", 16);
+            if (button == null) return;
+            var slot = bar.AddChildToHorizontalBox(button);
+            slot?.SetPadding(new FMargin { Left = 24 });
+            slot?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
+            Log.Write($"Mods button added to the game menu, after {UKismetSystemLibrary.GetObjectName(next)}");
+        }
+        else Log.Write($"No place for the Mods button in the game menu: next tab prompt {(next == null ? "not found" : "not in a row")}");
+    }
+
+    /// <summary>The menu bar's next tab prompt (E): a tab navigation button named Next..., inner widgets included.</summary>
+    static UWidget? FindNextTab(UUserWidget menu)
+    {
+        var queue = new List<UWidget>();
+        if (menu.WidgetTree?.RootWidget != null) queue.Add(menu.WidgetTree.RootWidget);
+        for (int i = 0; i < queue.Count && i < 2000; i++)
+        {
+            var widget = queue[i];
+            var name = UKismetSystemLibrary.GetObjectName(widget);
+            if (name.Contains("Next") && ClassPath(widget).Contains("TabNavigationButton")) return widget;
+            if (widget is UPanelWidget panel)
+                for (int c = 0; c < panel.GetChildrenCount(); c++)
+                {
+                    var child = panel.GetChildAt(c);
+                    if (child != null) queue.Add(child);
+                }
+            // A widget inside a widget: its own widgets.
+            if (widget is UUserWidget inner && inner.WidgetTree?.RootWidget != null) queue.Add(inner.WidgetTree.RootWidget);
+        }
+        return null;
+    }
+
+    static string ClassPath(UObject thing) =>
+        UKismetSystemLibrary.Conv_SoftClassReferenceToString(UKismetSystemLibrary.Conv_ClassToSoftClassReference(UGameplayStatics.GetObjectClass(thing)));
 
     public void CloseList()
     {
@@ -199,8 +278,7 @@ public class ModManager : AActor
 
     static bool FromFolder(UObject thing, string folder)
     {
-        var cls = UKismetSystemLibrary.Conv_SoftClassReferenceToString(UKismetSystemLibrary.Conv_ClassToSoftClassReference(UGameplayStatics.GetObjectClass(thing)));
-        return UKismetStringLibrary.StartsWith(cls, folder, ESearchCase.IgnoreCase);
+        return UKismetStringLibrary.StartsWith(ClassPath(thing), folder, ESearchCase.IgnoreCase);
     }
 
     /// <summary>Stops every running mod and starts them again, in the mod list's order.</summary>
