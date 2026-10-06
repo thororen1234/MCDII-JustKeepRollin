@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using NeoRune;
+using UE.CommonUI;
 using UE.CoreUObject;
 using UE.Engine;
 using UE.Minimap;
@@ -10,42 +11,168 @@ using UE.UMG;
 namespace CustomSkins;
 
 /// <summary>
-/// The Custom Skins row in the inventory's Collectibles screen, where the capes are: a button for the game's skin and
-/// one per PNG in the Skins folder, showing the skin's face. Clicking one wears it.
+/// The Skins section of the Custom tab in the inventory's Collectibles screen: a box for the game's skin and one per
+/// PNG in the Skins folder, showing the skin's face, in the game's slot boxes and as big as its. Clicking one wears it;
+/// the one worn has the game's equipped corner. The last box, a plus, copies the Skins folder's path, to add PNGs to it
+/// in File Explorer; they show once back in the game. In the game's look from its assets, or a plain one if they're missing.
 /// </summary>
 public class SkinRow : ScreenWidget
 {
-    const float IconSize = 48;
-    // About six buttons to a line.
-    const float ButtonsWidth = 400;
+    const string Title = "Skins";
+    const string SlotStyle = "/OreUI/UI/Button/SlotFrame/GearSelection/ButtonStyle_GearSlot.ButtonStyle_GearSlot_C";
+    const string EquippedCorner = "/SpicewoodUI/Spicewood/UI/Widget/Inventory/PlayerInventory/Slot/T_UI_Slot_Equipped.T_UI_Slot_Equipped";
+    const string TextStyles = "/OreUI/UI/Typography/TextStyles/";
+    // The game's boxes fill this much of a tile of its grid; the rest is the gap between them.
+    const float BoxShare = 0.83f;
+    // A skin's face, this much of the box across.
+    const float FaceShare = 0.5f;
+    // The equipped corner, as a share of the box.
+    const float CornerShare = 0.62f;
+    // The plus: its bars' length and thickness, as a share of the box.
+    const float PlusLength = 0.36f;
+    const float PlusThickness = 0.07f;
+    // The plus box's number: it copies the folder's path.
+    const int AddBox = -1;
+    // Until the Custom tab has measured the game's grid.
+    const float DefaultTile = 110;
+    const int DefaultColumns = 6;
 
     SkinSwapper? skins;
-    UWrapBox? grid;
+    UTextBlock? title;
+    // Under the boxes once the plus has copied the folder's path.
+    UTextBlock? note;
+    UUniformGridPanel? grid;
     List<SkinButton> buttons = new();
+    List<USizeBox> boxes = new();
+    List<UImage> icons = new();
+    List<UImage> corners = new();
+    List<UUniformGridSlot> cells = new();
+    // The skins shown (0 for the game's), to see when the folder has others.
+    List<int> shown = new();
+    // The game's skin on its box: it changes when the game's menu picks another.
+    UTexture? gameShown;
+    UImage? plusBar;
+    float tileWidth;
+    float tileHeight;
+    int columns;
+    // The game's assets, loaded before any widget is made (loading can let the garbage collector run).
+    UCommonButtonStyle? slotStyle;
+    FSlateBrush boxNormal;
+    FSlateBrush boxHovered;
+    FSlateBrush boxPressed;
+    UTexture2D? corner;
+    List<string> styleNames = new();
+    List<TSubclassOf<UCommonTextStyle>> styleClasses = new();
 
-    public static SkinRow? Create(UObject context, SkinSwapper skins)
+    /// <summary>A section not made yet: keep it in a field, then <see cref="Setup"/> it (which loads the game's assets).</summary>
+    public static SkinRow? Create(UObject context) =>
+        UWidgetBlueprintLibrary.Create(context, Unreal.ClassOf<SkinRow>(), World.PlayerController(context)) as SkinRow;
+
+    public bool Setup(SkinSwapper owner)
     {
-        var row = UWidgetBlueprintLibrary.Create(context, Unreal.ClassOf<SkinRow>(), World.PlayerController(context)) as SkinRow;
-        if (row == null) return null;
-        row.skins = skins;
-        if (!row.Build()) return null;
-        row.Refresh();
-        return row;
+        skins = owner;
+        Preload();
+        if (!Build()) return false;
+        Refresh();
+        return true;
     }
 
-    /// <summary>Makes the buttons again, for PNGs added or changed since.</summary>
+    void Preload()
+    {
+        var styleClass = Unreal.LoadClass<UCommonButtonStyle>(SlotStyle);
+        if (styleClass != null) slotStyle = UGameplayStatics.SpawnObject(styleClass, this) as UCommonButtonStyle;
+        if (slotStyle != null)
+        {
+            slotStyle.GetNormalBaseBrush(out var normal);
+            slotStyle.GetNormalHoveredBrush(out var hovered);
+            slotStyle.GetNormalPressedBrush(out var pressed);
+            boxNormal = normal;
+            boxHovered = hovered;
+            boxPressed = pressed;
+        }
+        corner = Load(EquippedCorner) as UTexture2D;
+        PreloadStyle("Style_Header4_Text");
+        PreloadStyle("Style_Button_Text");
+        PreloadStyle("Style_Body_Text");
+    }
+
+    void PreloadStyle(string style)
+    {
+        var styleClass = Unreal.LoadClass<UCommonTextStyle>($"{TextStyles}{style}.{style}_C");
+        if (styleClass == null) return;
+        styleNames.Add(style);
+        styleClasses.Add(styleClass);
+    }
+
+    /// <summary>Makes the boxes again, for PNGs added or changed since.</summary>
     public void Refresh()
     {
         if (grid == null || skins == null) return;
+        // The textures first: reading them can let the garbage collector run.
+        var numbers = new List<int> { 0 };
+        foreach (var number in SkinSwapper.Available()) numbers.Add(number);
+        var textures = new List<UTexture?>();
+        foreach (var number in numbers) textures.Add(skins.Icon(number));
+        gameShown = skins.GameSkin();
         grid.ClearChildren();
         buttons.Clear();
-        Add(0);
-        foreach (var number in SkinSwapper.Available()) Add(number);
+        boxes.Clear();
+        icons.Clear();
+        corners.Clear();
+        cells.Clear();
+        shown.Clear();
+        for (int i = 0; i < numbers.Count; i++)
+        {
+            Add(numbers[i], textures[i]);
+            shown.Add(numbers[i]);
+        }
+        Add(AddBox, null);
+        for (int i = 0; i < boxes.Count; i++) Size(i);
         Highlight();
+    }
+
+    /// <summary>
+    /// Call regularly while the section shows: makes the boxes again when PNGs were added to or taken from the folder, or
+    /// the game's menu picked another of its skins.
+    /// </summary>
+    public void Rescan()
+    {
+        if (skins == null) return;
+        var now = SkinSwapper.Available();
+        bool same = now.Count + 1 == shown.Count && skins.GameSkin() == gameShown;
+        for (int i = 0; same && i < now.Count; i++) same = now[i] == shown[i + 1];
+        if (!same) Refresh();
+    }
+
+    /// <summary>Sizes the boxes like the game's grid: a tile's size (gap included) and how many go across.</summary>
+    public void Fit(float width, float height, int across)
+    {
+        if (width <= 0 || height <= 0 || across <= 0)
+        {
+            width = DefaultTile;
+            height = DefaultTile;
+            across = DefaultColumns;
+        }
+        if (width == tileWidth && height == tileHeight && across == columns) return;
+        tileWidth = width;
+        tileHeight = height;
+        columns = across;
+        var gapX = width * (1 - BoxShare) / 2;
+        var gapY = height * (1 - BoxShare) / 2;
+        grid?.SetSlotPadding(new FMargin { Left = gapX, Top = gapY, Right = gapX, Bottom = gapY });
+        (title?.Slot as UVerticalBoxSlot)?.SetPadding(new FMargin { Left = gapX, Top = gapY * 2, Bottom = gapY });
+        (note?.Slot as UVerticalBoxSlot)?.SetPadding(new FMargin { Left = gapX, Right = gapX });
+        for (int i = 0; i < boxes.Count; i++) Size(i);
     }
 
     public void Pick(int number)
     {
+        if (number == AddBox)
+        {
+            CustomTab.CopyFolder(SkinSwapper.Folder());
+            note?.SetVisibility(ESlateVisibility.HitTestInvisible);
+            return;
+        }
         skins?.Select(number);
         Highlight();
     }
@@ -53,42 +180,109 @@ public class SkinRow : ScreenWidget
     void Highlight()
     {
         if (skins == null) return;
-        foreach (var button in buttons) button.SetStyle(ButtonStyle(button.Number == skins.Skin));
+        for (int i = 0; i < buttons.Count; i++)
+            corners[i].SetVisibility(buttons[i].Number == skins.Skin ? ESlateVisibility.HitTestInvisible : ESlateVisibility.Collapsed);
     }
 
-    void Add(int number)
+    void Add(int number, UTexture? texture)
     {
         var tree = WidgetTree;
-        if (tree == null || grid == null || skins == null) return;
+        if (tree == null || grid == null) return;
+        var box = UGameplayStatics.SpawnObject(Unreal.ClassOf<USizeBox>(), tree) as USizeBox;
         var button = UGameplayStatics.SpawnObject(Unreal.ClassOf<SkinButton>(), tree) as SkinButton;
-        var column = UGameplayStatics.SpawnObject(Unreal.ClassOf<UVerticalBox>(), tree) as UVerticalBox;
-        var label = Label(tree, number == 0 ? "Game" : number.ToString(), 13, White());
-        if (button == null || column == null || label == null) return;
-        button.Setup(this, number);
-
-        var icon = number == 0 ? null : skins.Icon(number);
+        var layers = UGameplayStatics.SpawnObject(Unreal.ClassOf<UOverlay>(), tree) as UOverlay;
         var image = UGameplayStatics.SpawnObject(Unreal.ClassOf<UImage>(), tree) as UImage;
-        if (image != null)
+        var mark = UGameplayStatics.SpawnObject(Unreal.ClassOf<UImage>(), tree) as UImage;
+        if (box == null || button == null || layers == null || image == null || mark == null) return;
+        button.Setup(this, number);
+        button.SetStyle(BoxStyle());
+        box.AddChild(button);
+        var content = button.AddChild(layers) as UButtonSlot;
+        content?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Fill);
+        content?.SetVerticalAlignment(EVerticalAlignment.VAlign_Fill);
+        content?.SetPadding(new FMargin());
+
+        if (number == AddBox)
         {
-            if (icon != null)
+            // A plus of two bars, in the game's text colour.
+            var bar = UGameplayStatics.SpawnObject(Unreal.ClassOf<UImage>(), tree) as UImage;
+            if (bar == null) return;
+            plusBar = bar;
+            foreach (var part in new List<UImage> { image, bar })
             {
-                image.SetBrushResourceObject(icon);
-                image.SetDesiredSizeOverride(new FVector2D { X = IconSize, Y = IconSize });
+                part.SetColorAndOpacity(new FLinearColor { R = 0.8f, G = 0.8f, B = 0.8f, A = 1 });
+                var partSlot = layers.AddChildToOverlay(part);
+                partSlot?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
+                partSlot?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
             }
-            else
-            {
-                // The game's skin has no PNG: a plain square in its place.
-                image.SetBrush(Rounded(new FLinearColor { R = 0.2f, G = 0.2f, B = 0.24f, A = 1 }, Gold(0.4f), 1, 4));
-                image.SetDesiredSizeOverride(new FVector2D { X = IconSize, Y = IconSize });
-            }
-            column.AddChildToVerticalBox(image)?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
         }
-        var labelSlot = column.AddChildToVerticalBox(label);
-        labelSlot?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
-        labelSlot?.SetPadding(new FMargin { Top = 2 });
-        button.AddChild(column);
-        grid.AddChildToWrapBox(button)?.SetPadding(new FMargin { Right = 6, Bottom = 6 });
+        else if (texture != null)
+        {
+            image.SetBrushResourceObject(texture);
+            var imageSlot = layers.AddChildToOverlay(image);
+            imageSlot?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
+            imageSlot?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
+        }
+        else
+        {
+            // The game's skin before it has been seen on the character: its name in its place.
+            var label = Styled(tree, "Game", "Style_Button_Text");
+            if (label != null)
+            {
+                var labelSlot = layers.AddChildToOverlay(label);
+                labelSlot?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
+                labelSlot?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
+            }
+        }
+
+        if (corner != null) mark.SetBrushFromTexture(corner, false);
+        else mark.SetBrush(Rounded(Gold(1), Gold(1), 0, 2));
+        var markSlot = layers.AddChildToOverlay(mark);
+        markSlot?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Right);
+        markSlot?.SetVerticalAlignment(EVerticalAlignment.VAlign_Top);
+
+        var cell = grid.AddChildToUniformGrid(box, 0, 0);
+        if (cell == null) return;
         buttons.Add(button);
+        boxes.Add(box);
+        icons.Add(image);
+        corners.Add(mark);
+        cells.Add(cell);
+    }
+
+    /// <summary>Sizes a box and puts it in its place in the grid.</summary>
+    void Size(int i)
+    {
+        int across = columns > 0 ? columns : DefaultColumns;
+        cells[i].SetRow(i / across);
+        cells[i].SetColumn(i % across);
+        var width = (tileWidth > 0 ? tileWidth : DefaultTile) * BoxShare;
+        var height = (tileHeight > 0 ? tileHeight : DefaultTile) * BoxShare;
+        boxes[i].SetWidthOverride(width);
+        boxes[i].SetHeightOverride(height);
+        if (buttons[i].Number == AddBox)
+        {
+            Resize(icons[i], width * PlusLength, width * PlusThickness);
+            if (plusBar != null) Resize(plusBar, width * PlusThickness, width * PlusLength);
+        }
+        else
+        {
+            var face = width * FaceShare;
+            Resize(icons[i], face, face);
+        }
+        var cornerSize = width * CornerShare;
+        Resize(corners[i], cornerSize, cornerSize);
+    }
+
+    /// <summary>
+    /// Sizes an image by its brush. (Its desired size override lives only in the widget on screen: rebuilding that, as
+    /// moving the section to a new screen does, loses it.)
+    /// </summary>
+    static void Resize(UImage image, float width, float height)
+    {
+        var brush = image.Brush;
+        brush.ImageSize = new FDeprecateSlateVector2D { X = width, Y = height };
+        image.SetBrush(brush);
     }
 
     bool Build()
@@ -100,38 +294,57 @@ public class SkinRow : ScreenWidget
             WidgetTree = tree;
         }
         if (tree == null) return false;
-        var panel = UGameplayStatics.SpawnObject(Unreal.ClassOf<UBorder>(), tree) as UBorder;
         var column = UGameplayStatics.SpawnObject(Unreal.ClassOf<UVerticalBox>(), tree) as UVerticalBox;
-        grid = UGameplayStatics.SpawnObject(Unreal.ClassOf<UWrapBox>(), tree) as UWrapBox;
-        var title = Label(tree, "Custom Skins", 16, Gold(1));
-        if (panel == null || column == null || grid == null || title == null) return false;
-        grid.WrapSize = ButtonsWidth;
-        grid.bExplicitWrapSize = true;
-        panel.SetBrush(Rounded(new FLinearColor { R = 0.03f, G = 0.03f, B = 0.04f, A = 0.85f }, Gold(0.5f), 1, 6));
-        panel.SetPadding(new FMargin { Left = 12, Top = 8, Right = 12, Bottom = 6 });
+        grid = UGameplayStatics.SpawnObject(Unreal.ClassOf<UUniformGridPanel>(), tree) as UUniformGridPanel;
+        title = Styled(tree, Title, "Style_Header4_Text");
+        note = Styled(tree, "Copied the Skins folder's path: paste it into File Explorer's address bar, add skins as 1.png to 20.png, and come back", "Style_Body_Text");
+        if (column == null || grid == null || title == null || note == null) return false;
         title.SetJustification(ETextJustify.Left);
-        column.AddChildToVerticalBox(title)?.SetPadding(new FMargin { Bottom = 6 });
-        column.AddChildToVerticalBox(grid);
-        panel.AddChild(column);
-        tree.RootWidget = panel;
+        note.SetJustification(ETextJustify.Left);
+        note.SetAutoWrapText(true);
+        note.SetVisibility(ESlateVisibility.Collapsed);
+        column.AddChildToVerticalBox(title);
+        column.AddChildToVerticalBox(grid)?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Left);
+        column.AddChildToVerticalBox(note);
+        tree.RootWidget = column;
+        Fit(0, 0, 0);
         return true;
     }
 
-    static FButtonStyle ButtonStyle(bool worn)
+    UObject? Load(string path) =>
+        UKismetSystemLibrary.LoadAsset_Blocking(UKismetSystemLibrary.Conv_SoftObjPathToSoftObjRef(UKismetSystemLibrary.MakeSoftObjectPath(path)));
+
+    /// <summary>The game's item box (normal, hovered and pressed), or a plain one if it isn't in the game.</summary>
+    FButtonStyle BoxStyle()
     {
-        var idle = Rounded(new FLinearColor { R = 0.07f, G = 0.07f, B = 0.09f, A = 0.92f }, new FLinearColor { R = 1, G = 1, B = 1, A = 0.18f }, 1, 6);
-        var hover = Rounded(new FLinearColor { R = 0.12f, G = 0.1f, B = 0.06f, A = 0.95f }, Gold(0.8f), 2, 6);
-        var picked = Rounded(new FLinearColor { R = 0.2f, G = 0.15f, B = 0.05f, A = 0.95f }, Gold(1), 2, 6);
-        var padding = new FMargin { Left = 6, Top = 6, Right = 6, Bottom = 4 };
+        if (slotStyle == null)
+        {
+            var idle = Rounded(new FLinearColor { R = 0.03f, G = 0.03f, B = 0.04f, A = 0.9f }, new FLinearColor { R = 1, G = 1, B = 1, A = 0.15f }, 2, 0);
+            var hover = Rounded(new FLinearColor { R = 0.05f, G = 0.05f, B = 0.06f, A = 0.95f }, new FLinearColor { R = 1, G = 1, B = 1, A = 0.6f }, 2, 0);
+            return new FButtonStyle { Normal = idle, Hovered = hover, Pressed = hover, Disabled = idle, NormalPadding = new FMargin(), PressedPadding = new FMargin() };
+        }
         return new FButtonStyle
         {
-            Normal = worn ? picked : idle,
-            Hovered = worn ? picked : hover,
-            Pressed = picked,
-            Disabled = idle,
-            NormalPadding = padding,
-            PressedPadding = padding,
+            Normal = boxNormal,
+            Hovered = boxHovered,
+            Pressed = boxPressed,
+            Disabled = boxNormal,
+            NormalPadding = new FMargin(),
+            PressedPadding = new FMargin(),
         };
+    }
+
+    /// <summary>Text in one of the game's text styles, or a plain look if the style isn't in the game.</summary>
+    UTextBlock? Styled(UObject outer, string text, string style)
+    {
+        int at = styleNames.IndexOf(style);
+        if (at < 0) return Label(outer, text, 15, White());
+        var block = UGameplayStatics.SpawnObject(Unreal.ClassOf<UCommonTextBlock>(), outer) as UCommonTextBlock;
+        if (block == null) return null;
+        block.SetStyle(styleClasses[at]);
+        block.SetText(text);
+        block.SetJustification(ETextJustify.Center);
+        return block;
     }
 
     /// <summary>A filled rounded box.</summary>
@@ -170,7 +383,7 @@ public class SkinRow : ScreenWidget
     }
 }
 
-/// <summary>A button that wears one skin.</summary>
+/// <summary>A box that wears one skin.</summary>
 public class SkinButton : UButton
 {
     int number;

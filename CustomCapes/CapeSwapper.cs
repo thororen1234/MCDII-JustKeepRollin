@@ -11,8 +11,6 @@ public class CustomCapesSettings : USaveGame
 {
     // 0 is the game's own cape, otherwise the number of the PNG in the Capes folder.
     public int Cape;
-    // Whether capes take lighting properly (linear render target) instead of being washed out.
-    public bool CharacterLighting;
     public string GameCapePath;
     public string GameMresPath;
 }
@@ -67,6 +65,8 @@ public class CapeSwapper : UObject
     Dictionary<string, UTexture2D> files = new();
     Dictionary<int, UTextureRenderTarget2D> capes = new();
     Dictionary<int, UTextureRenderTarget2D> mresTextures = new();
+    // The game's cape materials seen on the character, and their textures (read through an instance of each).
+    Dictionary<UMaterialInterface, UTexture> materialCapes = new();
     UTexture? defaultMres;
     // Every texture this mod made, to tell them from the game's: a copy of the character the game makes while a custom
     // cape is on starts with it, and putting that one back when the cape changes would bring the last cape back.
@@ -74,6 +74,10 @@ public class CapeSwapper : UObject
     // The game's cape as found, put back on copies that only ever had a custom one.
     UTexture? gameCape;
     UTexture? gameMres;
+
+    // The Apply Character Lighting setting turned off: capes drawn on linear textures, which come out brighter and washed
+    // out. On (the default), they're drawn on sRGB ones, which the game lights like the character's own skin.
+    bool linear;
 
     ACharacter? character;
     UTexture? worn;
@@ -133,16 +137,14 @@ public class CapeSwapper : UObject
         if (!missing) Log.Write(number == 0 ? "Wearing the game's cape" : $"Wearing {number}.png ({Available().Count} capes in {Folder()})");
     }
 
-    public void SetCharacterLighting(bool lit)
+    /// <summary>The Apply Character Lighting setting: whether capes are drawn on sRGB textures.</summary>
+    public void SetCharacterLighting(bool on)
     {
-        if (settings == null || settings.CharacterLighting == lit) return;
-        settings.CharacterLighting = lit;
-        UGameplayStatics.SaveGameToSlot(settings, SettingsSlot, 0);
-        // We must drop all cached targets since their format is wrong now
+        if (linear == !on) return;
+        linear = !on;
+        // The capes' textures are made again in the other format. The old ones stay in ours: copies of the character
+        // can still wear them.
         capes.Clear();
-        mresTextures.Clear();
-        defaultMres = null;
-        ours.Clear();
         Apply();
     }
 
@@ -405,7 +407,7 @@ public class CapeSwapper : UObject
         var file = File(number.ToString());
         if (file == null) return null;
         var target = capes.ContainsKey(number) ? capes[number] : null;
-        target = Convert(file, target);
+        target = Convert(file, target, !linear);
         if (target != null) capes[number] = target;
         return target;
     }
@@ -414,10 +416,55 @@ public class CapeSwapper : UObject
     public UTexture? Icon(int number) => Load(number);
 
     /// <summary>
+    /// The game's cape the character wears now (the same layout as a worn one), for the game's cape's button: the one it
+    /// would wear without a custom cape, which changes when the game's menu picks another. Else the one last seen, or null.
+    /// </summary>
+    public UTexture? GameIcon()
+    {
+        var player = owner != null ? World.Player(owner) : null;
+        if (player == null) return gameCape;
+        foreach (var component in player.K2_GetComponentsByClass(Unreal.ClassOf<USkeletalMeshComponent>()))
+        {
+            // Hidden ones are gear not worn.
+            if (component is not USkeletalMeshComponent mesh || ownCapes.Contains(mesh) || !mesh.IsVisible()
+                || UKismetSystemLibrary.GetPathName(mesh.GetSkinnedAsset()) != CapeMesh) continue;
+            var material = mesh.GetMaterial(0);
+            if (material == null) continue;
+            UTexture? cape = null;
+            if (material is UMaterialInstanceDynamic dynamic)
+            {
+                // Under a custom cape: the game's is the one it replaced.
+                int at = instances.IndexOf(dynamic);
+                cape = at >= 0 ? oldCapes[at] : dynamic.K2_GetTextureParameterValue(TextureParameter);
+            }
+            else if (materialCapes.ContainsKey(material)) cape = materialCapes[material];
+            else
+            {
+                var reader = UKismetMaterialLibrary.CreateDynamicMaterialInstance(owner, material, FName.None, EMIDCreationFlags.Transient);
+                cape = reader?.K2_GetTextureParameterValue(TextureParameter);
+                if (cape != null) materialCapes[material] = cape;
+            }
+            if (cape == null || ours.Contains(cape)) continue;
+            if (cape != gameCape)
+            {
+                gameCape = cape;
+                var path = UKismetSystemLibrary.GetPathName(cape);
+                if (settings != null && settings.GameCapePath != path)
+                {
+                    settings.GameCapePath = path;
+                    UGameplayStatics.SaveGameToSlot(settings, SettingsSlot, 0);
+                }
+            }
+            return cape;
+        }
+        return gameCape;
+    }
+
+    /// <summary>
     /// A cape PNG drawn in the game's layout, on the render target given if it's the right size, or on a new one. Null
     /// for a PNG that isn't a cape's size.
     /// </summary>
-    UTextureRenderTarget2D? Convert(UTexture2D file, UTextureRenderTarget2D? target)
+    UTextureRenderTarget2D? Convert(UTexture2D file, UTextureRenderTarget2D? target, bool srgb)
     {
         int width = file.Blueprint_GetSizeX();
         int height = file.Blueprint_GetSizeY();
@@ -445,7 +492,7 @@ public class CapeSwapper : UObject
         int targetHeight = (int)(GameHeight * unit);
         if (target == null || target.SizeX != targetWidth || target.SizeY != targetHeight)
         {
-            target = NewTarget(targetWidth, targetHeight);
+            target = NewTarget(targetWidth, targetHeight, srgb);
             if (target == null) return null;
             ours.Add(target);
         }
@@ -502,9 +549,9 @@ public class CapeSwapper : UObject
     /// An empty render target: sRGB, so colours stay as stored, see-through, and drawn with sharp pixels. The filter
     /// only takes effect when the target is made, so it's made small and then resized.
     /// </summary>
-    UTextureRenderTarget2D? NewTarget(int width, int height)
+    UTextureRenderTarget2D? NewTarget(int width, int height, bool srgb)
     {
-        var format = (settings != null && settings.CharacterLighting) ? ETextureRenderTargetFormat.RTF_RGBA8 : ETextureRenderTargetFormat.RTF_RGBA8_SRGB;
+        var format = srgb ? ETextureRenderTargetFormat.RTF_RGBA8_SRGB : ETextureRenderTargetFormat.RTF_RGBA8;
         var target = UKismetRenderingLibrary.CreateRenderTarget2D(owner, 1, 1, format,
             new FLinearColor(), false, false);
         if (target == null) return null;
@@ -535,7 +582,7 @@ public class CapeSwapper : UObject
         var file = File($"{number}_MRES");
         if (file != null)
         {
-            var target = Convert(file, mresTextures.ContainsKey(number) ? mresTextures[number] : null);
+            var target = Convert(file, mresTextures.ContainsKey(number) ? mresTextures[number] : null, false);
             if (target != null)
             {
                 mresTextures[number] = target;
@@ -606,7 +653,7 @@ public class CapeSwapper : UObject
             width = texture2D.Blueprint_GetSizeX();
             height = texture2D.Blueprint_GetSizeY();
         }
-        var target = NewTarget(width, height);
+        var target = NewTarget(width, height, true);
         if (target == null) return;
         ours.Add(target);
         UKismetRenderingLibrary.BeginDrawCanvasToRenderTarget(owner, target, out var canvas, out var size, out var context);
@@ -626,6 +673,7 @@ public class CapeSwapper : UObject
         return numbers;
     }
 
-    static string Folder() =>
+    /// <summary>The Capes folder, with a slash at the end.</summary>
+    public static string Folder() =>
         UBlueprintPathsLibrary.ConvertRelativePathToFull(UBlueprintPathsLibrary.ProjectContentDir() + "Paks/~mods/CustomCapes/Capes/", "");
 }

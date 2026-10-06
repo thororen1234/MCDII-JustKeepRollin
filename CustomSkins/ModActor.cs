@@ -63,6 +63,10 @@ public class ModActor : AActor, ISettingsEvents
     bool menuShown;
     bool started;
 
+    // The Custom tab, while the row is in the item grid's place.
+    CustomTab? tab;
+    bool tabbed;
+
     protected override void ReceiveBeginPlay()
     {
         // Menus can pause the game, and the inventory, which shows the character, is one.
@@ -117,7 +121,6 @@ public class ModActor : AActor, ISettingsEvents
 
     public void OnSettingChanged(string id, string value) { }
     public void OnButtonPressed(string id) { }
-    public void OnWidgetAdded(string id) { }
 
     static bool Pressed(APlayerController controller, FKey key, FKey secondary) =>
         controller.WasInputKeyJustPressed(key) || controller.WasInputKeyJustPressed(secondary);
@@ -176,12 +179,24 @@ public class ModActor : AActor, ISettingsEvents
 
         if (shown && !menuShown)
         {
-            if (row == null) row = SkinRow.Create(this, skins);
+            if (row == null)
+            {
+                // Kept in the field before it's set up: setting it up loads the game's assets, which can let the
+                // garbage collector run.
+                row = SkinRow.Create(this);
+                if (row != null && !row.Setup(skins)) row = null;
+            }
             else row.Refresh();
         }
         menuShown = shown;
         if (row == null) return;
         if (collectibles != null && collectibles != rowIn) PlaceRow(collectibles);
+        if (shown && tabbed && tab != null)
+        {
+            tab.Keep();
+            row.Fit(tab.TileWidth, tab.TileHeight, tab.Columns);
+            if (tab.Chosen) row.Rescan();
+        }
         if (!floating) return;
         row.SetVisibility(shown ? ESlateVisibility.Visible : ESlateVisibility.Collapsed);
         if (shown) FollowGrid();
@@ -206,30 +221,21 @@ public class ModActor : AActor, ISettingsEvents
         if (row == null) return;
         rowIn = collectibles;
         row.RemoveFromParent();
+        row.SetVisibility(ESlateVisibility.Visible);
+        tabbed = false;
         grid = Find(collectibles.WidgetTree?.RootWidget, ItemGridName);
-        // The capes scroll in a list inside the item grid: the row goes at its end, under the last cape.
-        if (grid is UUserWidget gridWidget)
+
+        // The Custom tab's page, laid over the item grid: before CustomCapes' section.
+        if (grid?.GetParent() is UGridPanel)
         {
-            if (FindScrollBox(gridWidget.WidgetTree?.RootWidget) is UScrollBox scroll)
+            if (tab == null) tab = CustomTab.Create(this);
+            if (tab != null && tab.Attach(grid, row, true))
             {
                 floating = false;
-                (scroll.AddChild(row) as UScrollBoxSlot)?.SetPadding(new FMargin { Top = 8 });
-                Log.Write($"Skin row added to the Collectibles screen, at the end of {UKismetSystemLibrary.GetObjectName(scroll)}");
+                tabbed = true;
+                Log.Write("Skin section added to the Collectibles screen's Custom tab");
                 return;
             }
-        }
-        // Or beside the item grid, past its scrollbar: in the next cell, at the bottom, level with the scrollbar's end.
-        if (grid?.GetParent() is UGridPanel cells && grid.Slot is UGridSlot gridCell)
-        {
-            floating = false;
-            var place = cells.AddChildToGrid(row, gridCell.Row, gridCell.Column + gridCell.ColumnSpan);
-            place?.SetRowSpan(gridCell.RowSpan);
-            place?.SetLayer(gridCell.Layer + 10);
-            place?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Left);
-            place?.SetVerticalAlignment(EVerticalAlignment.VAlign_Bottom);
-            place?.SetPadding(new FMargin { Left = RowLeft, Bottom = RowBottom });
-            Log.Write($"Skin row added to the Collectibles screen, beside the item grid's scrollbar");
-            return;
         }
         // Or the nearest list the item grid is in: the row goes at its end.
         var parent = grid?.GetParent();
@@ -245,24 +251,6 @@ public class ModActor : AActor, ISettingsEvents
         row.ShowAt(new FVector2D(), new FVector2D(), ScreenWidget.AboveGameUI);
         FollowGrid();
         Log.Write($"Skin row shown over the Collectibles screen (item grid {(grid == null ? "not found" : "not in a list")})");
-    }
-
-    /// <summary>The first scroll box under a widget, or null.</summary>
-    static UScrollBox? FindScrollBox(UWidget? root)
-    {
-        var queue = new List<UWidget>();
-        if (root != null) queue.Add(root);
-        for (int i = 0; i < queue.Count && i < 512; i++)
-        {
-            if (queue[i] is UScrollBox scroll) return scroll;
-            if (queue[i] is UPanelWidget panel)
-                for (int c = 0; c < panel.GetChildrenCount(); c++)
-                {
-                    var child = panel.GetChildAt(c);
-                    if (child != null) queue.Add(child);
-                }
-        }
-        return null;
     }
 
     /// <summary>The first widget with a name under a widget, or null.</summary>
@@ -291,5 +279,4 @@ public interface ISettingsEvents
     void OnKeybindChanged(string Id, FKey Key, FKey SecondaryKey);
     void OnSettingChanged(string Id, string Value);
     void OnSettingsReset();
-    void OnWidgetAdded(string Id);
 }

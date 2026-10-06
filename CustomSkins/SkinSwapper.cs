@@ -40,6 +40,9 @@ public class SkinSwapper : UObject
     const int HeadFrontX = 8;
     const int HeadFrontY = 8;
     const int FaceSize = 8;
+    // The second layer (the hat) over the head's front.
+    const int HatFrontX = 40;
+    const int HatFrontY = 8;
     // The game's skin materials take their skin from this.
     const string GameParameter = "BaseColour";
     // Texture parameters a skin material might take its skin from, the game's first (names ignore case).
@@ -62,6 +65,11 @@ public class SkinSwapper : UObject
     UTexture? gameSkin;
     UTexture? gameMres;
     Dictionary<int, UTexture2D> mresTextures = new();
+    // The game's skin materials seen on the character, and their skins (read through an instance of each).
+    Dictionary<UMaterialInterface, UTexture> materialSkins = new();
+    // While dressing a copy of the character in a menu: the main menu's party has other skins, which aren't the game's
+    // skin to remember (unless none is known yet).
+    bool dressingCopy;
     UTexture? defaultMres;
     // LogInfo's lines: a field, because a List passed to a method is a copy in a Blueprint.
     List<string> info = new();
@@ -230,6 +238,7 @@ public class SkinSwapper : UObject
     void Dress(AActor actor)
     {
         dressed.Add(actor);
+        dressingCopy = actor != character;
         // Armor and the cape are child actors: only the actor's own meshes (body, face) wear the skin.
         foreach (var component in actor.K2_GetComponentsByClass(Unreal.ClassOf<USkinnedMeshComponent>()))
         {
@@ -271,12 +280,12 @@ public class SkinSwapper : UObject
         // What to put back when the skin changes: the game's, never a skin of ours.
         var skin = instance.K2_GetTextureParameterValue(parameter);
         if (skin != null && ours.Contains(skin)) skin = gameSkin;
-        else if (skin != null) gameSkin = skin;
+        else if (skin != null && (!dressingCopy || gameSkin == null)) gameSkin = skin;
         oldSkins.Add(skin);
         var mres = instance.K2_GetTextureParameterValue(MresParameter);
         var oldMresTexture = mres;
         if (mres != null && ours.Contains(mres)) oldMresTexture = gameMres;
-        else if (mres != null) gameMres = mres;
+        else if (mres != null && (!dressingCopy || gameMres == null)) gameMres = mres;
         oldMres.Add(oldMresTexture);
         instance.SetTextureParameterValue(parameter, worn);
         if (mres != null) instance.SetTextureParameterValue(MresParameter, Mres(Skin));
@@ -421,20 +430,80 @@ public class SkinSwapper : UObject
         UKismetRenderingLibrary.EndDrawCanvasToRenderTarget(owner, context);
     }
 
-    /// <summary>The front of a skin's head, face included, for the skin's button: null for a missing PNG.</summary>
+    /// <summary>
+    /// The front of a skin's head, face (moving eyes and mouth too) and second layer included, for the skin's button: 0 for the game's skin last seen
+    /// on the character. Null for a missing PNG, or a game's skin not seen yet.
+    /// </summary>
     public UTexture? Icon(int number)
     {
-        var skin = Load(number);
+        var skin = number == 0 ? GameSkin() : Load(number);
         if (skin == null) return null;
         var target = NewTarget(FaceSize, FaceSize);
         if (target == null) return null;
         UKismetRenderingLibrary.BeginDrawCanvasToRenderTarget(owner, target, out var canvas, out var size, out var context);
-        canvas?.K2_DrawTexture(skin, new FVector2D(), new FVector2D { X = FaceSize, Y = FaceSize },
-            new FVector2D { X = HeadFrontX / 64f, Y = HeadFrontY / 64f }, new FVector2D { X = FaceSize / 64f, Y = FaceSize / 64f },
-            new FLinearColor { R = 1, G = 1, B = 1, A = 1 }, EBlendMode.BLEND_AlphaComposite, 0, new FVector2D());
+        if (canvas != null)
+        {
+            canvas.K2_DrawTexture(skin, new FVector2D(), new FVector2D { X = FaceSize, Y = FaceSize },
+                new FVector2D { X = HeadFrontX / 64f, Y = HeadFrontY / 64f }, new FVector2D { X = FaceSize / 64f, Y = FaceSize / 64f },
+                new FLinearColor { R = 1, G = 1, B = 1, A = 1 }, EBlendMode.BLEND_AlphaComposite, 0, new FVector2D());
+            // The game's skins keep their face, eyes and mouth painted on, in the face block (their eyes and mouth
+            // that move are the game's own).
+            if (number == 0)
+                canvas.K2_DrawTexture(skin, new FVector2D(), new FVector2D { X = FaceSize, Y = FaceSize },
+                    new FVector2D { X = FaceBlockX / 64f, Y = FaceBlockY / 64f }, new FVector2D { X = FaceSize / 64f, Y = FaceSize / 64f },
+                    new FLinearColor { R = 1, G = 1, B = 1, A = 1 }, EBlendMode.BLEND_AlphaComposite, 0, new FVector2D());
+            FaceShapes(canvas, skin);
+            canvas.K2_DrawTexture(skin, new FVector2D(), new FVector2D { X = FaceSize, Y = FaceSize },
+                new FVector2D { X = HatFrontX / 64f, Y = HatFrontY / 64f }, new FVector2D { X = FaceSize / 64f, Y = FaceSize / 64f },
+                new FLinearColor { R = 1, G = 1, B = 1, A = 1 }, EBlendMode.BLEND_AlphaComposite, 0, new FVector2D());
+        }
         UKismetRenderingLibrary.EndDrawCanvasToRenderTarget(owner, context);
         return Solid(target, FaceSize / 2, FaceSize / 2) ? target : null;
     }
+
+    /// <summary>
+    /// The eyes and mouth that move with the face (see FaceParts, whose shapes these are), drawn flat on the face: the
+    /// game's skins and converted skins keep them apart from the head's front. A skin leaves the shapes it doesn't use
+    /// see-through, and a skin with them painted on has none.
+    /// </summary>
+    static void FaceShapes(UCanvas canvas, UTexture skin)
+    {
+        FaceEye(canvas, skin, 1, 2, 26, 32, 24, 30);
+        FaceEye(canvas, skin, 5, 5, 28, 34, 25, 31);
+        FacePixel(canvas, skin, 3, 8, 24, 7);
+        FacePixel(canvas, skin, 4, 8, 25, 7);
+        for (int i = 0; i < 4; i++) FacePixel(canvas, skin, 2 + i, 7, 26 + i, 7);
+    }
+
+    /// <summary>An eye in every shape, whites then pupil (FaceParts.Eyes).</summary>
+    static void FaceEye(UCanvas canvas, UTexture skin, int column, int pupilColumn, int u, int u2, int pupilU, int pupilU2)
+    {
+        FaceShape(canvas, skin, column, 2, u, 6, 5, 5);
+        FaceShape(canvas, skin, column, 2, u2, 6, 6, 6);
+        FaceShape(canvas, skin, column, 2, u2, 7, 7, 7);
+        FaceShape(canvas, skin, column, 2, u, 0, 4, 5);
+        FaceShape(canvas, skin, column, 2, u, 4, 5, 6);
+        FaceShape(canvas, skin, column, 2, u, 2, 6, 7);
+        FaceShape(canvas, skin, pupilColumn, 1, pupilU, 6, 5, 5);
+        FaceShape(canvas, skin, pupilColumn, 1, pupilU2, 6, 6, 6);
+        FaceShape(canvas, skin, pupilColumn, 1, pupilU2, 7, 7, 7);
+        FaceShape(canvas, skin, pupilColumn, 1, pupilU, 0, 4, 5);
+        FaceShape(canvas, skin, pupilColumn, 1, pupilU, 4, 5, 6);
+        FaceShape(canvas, skin, pupilColumn, 1, pupilU, 2, 6, 7);
+    }
+
+    /// <summary>A block of face pixels, some columns wide from rows first to last (1-8), from the skin from (u, v).</summary>
+    static void FaceShape(UCanvas canvas, UTexture skin, int column, int width, int u, int v, int first, int last)
+    {
+        for (int row = first; row <= last; row++)
+            for (int i = 0; i < width; i++) FacePixel(canvas, skin, column + i, row, u + i, v + row - first);
+    }
+
+    /// <summary>A face pixel at a column (0-7) and row (1-8), from one skin pixel.</summary>
+    static void FacePixel(UCanvas canvas, UTexture skin, int column, int row, int u, int v) =>
+        canvas.K2_DrawTexture(skin, new FVector2D { X = column, Y = row - 1 }, new FVector2D { X = 1, Y = 1 },
+            new FVector2D { X = u / 64f, Y = v / 64f }, new FVector2D { X = 1 / 64f, Y = 1 / 64f },
+            new FLinearColor { R = 1, G = 1, B = 1, A = 1 }, EBlendMode.BLEND_AlphaComposite, 0, new FVector2D());
 
     /// <summary>
     /// Whether the face block is on the head's front: some of their pixels compared (eyes, mouth). A skin without a face
@@ -523,7 +592,52 @@ public class SkinSwapper : UObject
         if (target != null) UKismetRenderingLibrary.ExportRenderTarget(owner, target, Folder() + "_game/", name + ".png");
     }
 
-    /// <summary>The skin's &lt;number&gt;_MRES.png, or a plain MRES.</summary>
+    /// <summary>
+    /// The skin the character has from the game's menu: the one it would wear without a custom skin, which changes when the
+    /// game's menu picks another. Else the one last seen, or null.
+    /// </summary>
+    public UTexture? GameSkin()
+    {
+        var player = owner != null ? World.Player(owner) : null;
+        if (player == null) return gameSkin;
+        foreach (var component in player.K2_GetComponentsByClass(Unreal.ClassOf<USkinnedMeshComponent>()))
+        {
+            if (component is not USkinnedMeshComponent mesh || UKismetSystemLibrary.GetPathName(mesh.GetSkinnedAsset()) != PlayerBody) continue;
+            for (int i = 0; i < mesh.GetNumMaterials(); i++)
+            {
+                var material = mesh.GetMaterial(i);
+                if (material == null) continue;
+                UTexture? skin = null;
+                if (material is UMaterialInstanceDynamic dynamic)
+                {
+                    // Under a custom skin: the game's is the one it replaced.
+                    int at = instances.IndexOf(dynamic);
+                    if (at >= 0) skin = oldSkins[at];
+                    else
+                    {
+                        var parameter = SkinParameter(dynamic);
+                        if (parameter != FName.None) skin = dynamic.K2_GetTextureParameterValue(parameter);
+                    }
+                }
+                else if (materialSkins.ContainsKey(material)) skin = materialSkins[material];
+                else
+                {
+                    var reader = UKismetMaterialLibrary.CreateDynamicMaterialInstance(owner, material, FName.None, EMIDCreationFlags.Transient);
+                    var parameter = reader != null ? SkinParameter(reader) : FName.None;
+                    if (reader != null && parameter != FName.None) skin = reader.K2_GetTextureParameterValue(parameter);
+                    if (skin != null) materialSkins[material] = skin;
+                }
+                if (skin == null || ours.Contains(skin)) continue;
+                gameSkin = skin;
+                return skin;
+            }
+        }
+        return gameSkin;
+    }
+
+    /// <summary>
+    /// The skin's &lt;number&gt;_MRES.png, or a plain MRES. (Not the game's skin's: it lights a custom skin badly.)
+    /// </summary>
     UTexture? Mres(int number)
     {
         if (mresTextures.ContainsKey(number)) return mresTextures[number];
@@ -557,7 +671,8 @@ public class SkinSwapper : UObject
         return numbers;
     }
 
-    static string Folder() =>
+    /// <summary>The Skins folder, with a slash at the end.</summary>
+    public static string Folder() =>
         UBlueprintPathsLibrary.ConvertRelativePathToFull(UBlueprintPathsLibrary.ProjectContentDir() + "Paks/~mods/CustomSkins/Skins/", "");
 
     /// <summary>

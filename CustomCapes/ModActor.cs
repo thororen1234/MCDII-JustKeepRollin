@@ -63,6 +63,12 @@ public class ModActor : AActor, ISettingsEvents
     bool menuShown;
     bool started;
 
+    // The Custom tab, while the row is in the item grid's place.
+    CustomTab? tab;
+    bool tabbed;
+    // The Apply Character Lighting setting; BetterBlueprintLoader only sends it when it isn't on its default.
+    bool lighting = true;
+
     // The keys, each setting's two (the second empty unless set in the Mods tab).
     FKey nextKey = new FKey { KeyName = DefaultNextKey };
     FKey nextKey2 = new FKey();
@@ -104,24 +110,34 @@ public class ModActor : AActor, ISettingsEvents
         nextKey2 = new FKey();
         reloadKey2 = new FKey();
         exportKey2 = new FKey();
+        SetLighting(true);
     }
 
-    public void OnSettingChanged(string id, string value) 
+    public void OnSettingChanged(string id, string value)
     {
-        if (id == LightingSetting && capes != null)
-        {
-            capes.SetCharacterLighting(value == "True");
-        }
+        if (id == LightingSetting) SetLighting(value == "true");
+    }
+
+    void SetLighting(bool on)
+    {
+        lighting = on;
+        if (capes == null) return;
+        capes.SetCharacterLighting(on);
+        row?.Refresh();
     }
     public void OnButtonPressed(string id) { }
-    public void OnWidgetAdded(string id) { }
 
     static bool Pressed(APlayerController controller, FKey key, FKey secondary) =>
         controller.WasInputKeyJustPressed(key) || controller.WasInputKeyJustPressed(secondary);
 
     public override void ReceiveTick(float deltaSeconds)
     {
-        if (!started) { started = true; capes = CapeSwapper.Create(this); }
+        if (!started)
+        {
+            started = true;
+            capes = CapeSwapper.Create(this);
+            capes?.SetCharacterLighting(lighting);
+        }
         var now = World.RealTime(this);
         if (now >= nextCheck)
         {
@@ -167,12 +183,24 @@ public class ModActor : AActor, ISettingsEvents
 
         if (shown && !menuShown)
         {
-            if (row == null) row = CapeRow.Create(this, capes);
+            if (row == null)
+            {
+                // Kept in the field before it's set up: setting it up loads the game's assets, which can let the
+                // garbage collector run.
+                row = CapeRow.Create(this);
+                if (row != null && !row.Setup(capes)) row = null;
+            }
             else row.Refresh();
         }
         menuShown = shown;
         if (row == null) return;
         if (collectibles != null && collectibles != rowIn) PlaceRow(collectibles);
+        if (shown && tabbed && tab != null)
+        {
+            tab.Keep();
+            row.Fit(tab.TileWidth, tab.TileHeight, tab.Columns);
+            if (tab.Chosen) row.Rescan();
+        }
         if (!floating) return;
         row.SetVisibility(shown ? ESlateVisibility.Visible : ESlateVisibility.Collapsed);
         if (shown) FollowGrid();
@@ -197,19 +225,21 @@ public class ModActor : AActor, ISettingsEvents
         if (row == null) return;
         rowIn = collectibles;
         row.RemoveFromParent();
+        row.SetVisibility(ESlateVisibility.Visible);
+        tabbed = false;
         grid = Find(collectibles.WidgetTree?.RootWidget, ItemGridName);
-        // Beside the item grid, past its scrollbar: in the next cell, at the bottom, level with the scrollbar's end.
-        if (grid?.GetParent() is UGridPanel cells && grid.Slot is UGridSlot gridCell)
+
+        // The Custom tab's page, laid over the item grid: after CustomSkins' section.
+        if (grid?.GetParent() is UGridPanel)
         {
-            floating = false;
-            var place = cells.AddChildToGrid(row, gridCell.Row, gridCell.Column + gridCell.ColumnSpan);
-            place?.SetRowSpan(gridCell.RowSpan);
-            place?.SetLayer(gridCell.Layer + 10);
-            place?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Left);
-            place?.SetVerticalAlignment(EVerticalAlignment.VAlign_Bottom);
-            place?.SetPadding(new FMargin { Left = RowLeft, Bottom = RowBottom });
-            Log.Write($"Cape row added to the Collectibles screen, beside the item grid's scrollbar");
-            return;
+            if (tab == null) tab = CustomTab.Create(this);
+            if (tab != null && tab.Attach(grid, row, false))
+            {
+                floating = false;
+                tabbed = true;
+                Log.Write("Cape section added to the Collectibles screen's Custom tab");
+                return;
+            }
         }
         // Or the nearest list the item grid is in: the row goes at its end.
         var parent = grid?.GetParent();
@@ -225,42 +255,6 @@ public class ModActor : AActor, ISettingsEvents
         row.ShowAt(new FVector2D(), new FVector2D(), ScreenWidget.AboveGameUI);
         FollowGrid();
         Log.Write($"Cape row shown over the Collectibles screen (item grid {(grid == null ? "not found" : "not in a list")})");
-    }
-
-    /// <summary>The first scroll box under a widget, or null.</summary>
-    static UScrollBox? FindScrollBox(UWidget? root)
-    {
-        var queue = new List<UWidget>();
-        if (root != null) queue.Add(root);
-        for (int i = 0; i < queue.Count && i < 512; i++)
-        {
-            if (queue[i] is UScrollBox scroll) return scroll;
-            if (queue[i] is UPanelWidget panel)
-                for (int c = 0; c < panel.GetChildrenCount(); c++)
-                {
-                    var child = panel.GetChildAt(c);
-                    if (child != null) queue.Add(child);
-                }
-        }
-        return null;
-    }
-
-    /// <summary>The first wrap box under a widget, or null.</summary>
-    static UWrapBox? FindWrapBox(UWidget? root)
-    {
-        var queue = new List<UWidget>();
-        if (root != null) queue.Add(root);
-        for (int i = 0; i < queue.Count && i < 512; i++)
-        {
-            if (queue[i] is UWrapBox box) return box;
-            if (queue[i] is UPanelWidget panel)
-                for (int c = 0; c < panel.GetChildrenCount(); c++)
-                {
-                    var child = panel.GetChildAt(c);
-                    if (child != null) queue.Add(child);
-                }
-        }
-        return null;
     }
 
     /// <summary>The first widget with a name under a widget, or null.</summary>
@@ -289,5 +283,4 @@ public interface ISettingsEvents
     void OnKeybindChanged(string Id, FKey Key, FKey SecondaryKey);
     void OnSettingChanged(string Id, string Value);
     void OnSettingsReset();
-    void OnWidgetAdded(string Id);
 }
