@@ -39,11 +39,17 @@ public class CapeRow : ScreenWidget
     public void Refresh()
     {
         if (grid == null || capes == null) return;
-        grid.ClearChildren();
+        foreach (var button in buttons) button.RemoveFromParent();
         buttons.Clear();
         Add(0);
         foreach (var number in CapeSwapper.Available()) Add(number);
         Highlight();
+    }
+
+    public void SetNativeGrid(UWrapBox nativeGrid)
+    {
+        grid = nativeGrid;
+        Refresh();
     }
 
     public void Pick(int number)
@@ -95,7 +101,7 @@ public class CapeRow : ScreenWidget
         labelSlot?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
         labelSlot?.SetPadding(new FMargin { Top = 2 });
         button.AddChild(column);
-        grid.AddChildToWrapBox(button)?.SetPadding(new FMargin { Right = 6, Bottom = 6 });
+        grid.AddChildToWrapBox(button)?.SetPadding(new FMargin { Right = 12, Bottom = 12 });
         buttons.Add(button);
     }
 
@@ -111,14 +117,12 @@ public class CapeRow : ScreenWidget
         var panel = UGameplayStatics.SpawnObject(Unreal.ClassOf<UBorder>(), tree) as UBorder;
         var column = UGameplayStatics.SpawnObject(Unreal.ClassOf<UVerticalBox>(), tree) as UVerticalBox;
         grid = UGameplayStatics.SpawnObject(Unreal.ClassOf<UWrapBox>(), tree) as UWrapBox;
-        var title = Label(tree, "Custom Capes", 16, Gold(1));
-        if (panel == null || column == null || grid == null || title == null) return false;
-        grid.WrapSize = ButtonsWidth;
-        grid.bExplicitWrapSize = true;
-        panel.SetBrush(Rounded(new FLinearColor { R = 0.03f, G = 0.03f, B = 0.04f, A = 0.85f }, Gold(0.5f), 1, 6));
-        panel.SetPadding(new FMargin { Left = 12, Top = 8, Right = 12, Bottom = 6 });
-        title.SetJustification(ETextJustify.Left);
-        column.AddChildToVerticalBox(title)?.SetPadding(new FMargin { Bottom = 6 });
+        if (panel == null || column == null || grid == null) return false;
+        
+        // Transparent border so it seamlessly blends
+        panel.SetBrushColor(new FLinearColor { R = 0, G = 0, B = 0, A = 0 });
+        panel.SetPadding(new FMargin { Left = 0, Top = 0, Right = 0, Bottom = 0 });
+        
         column.AddChildToVerticalBox(grid);
         panel.AddChild(column);
         tree.RootWidget = panel;

@@ -15,6 +15,9 @@ namespace CustomCapes;
 /// F3. Only you see them: everyone else sees the cape picked in the game's own menu. The keys are settings in
 /// BetterBlueprintLoader's Mods tab.
 /// </summary>
+[ModSetting.Heading("Visuals")]
+[ModSetting.Toggle(LightingSetting, "Apply Character Lighting", Default = true,
+    Description = "Makes custom capes react to light and shadows just like your character. Turn this off if your custom capes look too dark.")]
 [ModSetting.Heading("Keys")]
 [ModSetting.Keybind(NextSetting, "Next Cape", Default = DefaultNextKey,
     Description = "Wears the next cape in the Capes folder; after the last one, the game's cape again.")]
@@ -26,6 +29,7 @@ namespace CustomCapes;
 public class ModActor : AActor, ISettingsEvents
 #pragma warning restore NR0001
 {
+    const string LightingSetting = "character_lighting";
     const string NextSetting = "next_key";
     const string ReloadSetting = "reload_key";
     const string ExportSetting = "export_key";
@@ -43,7 +47,7 @@ public class ModActor : AActor, ISettingsEvents
     // Where the row sits when the item grid has no list to go in: just past the scrollbar, with its bottom level with
     // the scrollbar's.
     const float RowLeft = 16;
-    const float RowBottom = 196;
+    const float RowBottom = 330; // higher than CustomSkins to prevent overlap
 
     CapeSwapper? capes;
     // When Check and WatchMenu run next (real time): from the tick, which keeps running while menus pause the game.
@@ -102,7 +106,13 @@ public class ModActor : AActor, ISettingsEvents
         exportKey2 = new FKey();
     }
 
-    public void OnSettingChanged(string id, string value) { }
+    public void OnSettingChanged(string id, string value) 
+    {
+        if (id == LightingSetting && capes != null)
+        {
+            capes.SetCharacterLighting(value == "True");
+        }
+    }
     public void OnButtonPressed(string id) { }
     public void OnWidgetAdded(string id) { }
 
@@ -188,18 +198,7 @@ public class ModActor : AActor, ISettingsEvents
         rowIn = collectibles;
         row.RemoveFromParent();
         grid = Find(collectibles.WidgetTree?.RootWidget, ItemGridName);
-        // The capes scroll in a list inside the item grid: the row goes at its end, under the last cape.
-        if (grid is UUserWidget gridWidget)
-        {
-            if (FindScrollBox(gridWidget.WidgetTree?.RootWidget) is UScrollBox scroll)
-            {
-                floating = false;
-                (scroll.AddChild(row) as UScrollBoxSlot)?.SetPadding(new FMargin { Top = 8 });
-                Log.Write($"Cape row added to the Collectibles screen, at the end of {UKismetSystemLibrary.GetObjectName(scroll)}");
-                return;
-            }
-        }
-        // Or beside the item grid, past its scrollbar: in the next cell, at the bottom, level with the scrollbar's end.
+        // Beside the item grid, past its scrollbar: in the next cell, at the bottom, level with the scrollbar's end.
         if (grid?.GetParent() is UGridPanel cells && grid.Slot is UGridSlot gridCell)
         {
             floating = false;
@@ -236,6 +235,24 @@ public class ModActor : AActor, ISettingsEvents
         for (int i = 0; i < queue.Count && i < 512; i++)
         {
             if (queue[i] is UScrollBox scroll) return scroll;
+            if (queue[i] is UPanelWidget panel)
+                for (int c = 0; c < panel.GetChildrenCount(); c++)
+                {
+                    var child = panel.GetChildAt(c);
+                    if (child != null) queue.Add(child);
+                }
+        }
+        return null;
+    }
+
+    /// <summary>The first wrap box under a widget, or null.</summary>
+    static UWrapBox? FindWrapBox(UWidget? root)
+    {
+        var queue = new List<UWidget>();
+        if (root != null) queue.Add(root);
+        for (int i = 0; i < queue.Count && i < 512; i++)
+        {
+            if (queue[i] is UWrapBox box) return box;
             if (queue[i] is UPanelWidget panel)
                 for (int c = 0; c < panel.GetChildrenCount(); c++)
                 {

@@ -11,6 +11,10 @@ public class CustomCapesSettings : USaveGame
 {
     // 0 is the game's own cape, otherwise the number of the PNG in the Capes folder.
     public int Cape;
+    // Whether capes take lighting properly (linear render target) instead of being washed out.
+    public bool CharacterLighting;
+    public string GameCapePath;
+    public string GameMresPath;
 }
 
 /// <summary>
@@ -129,6 +133,19 @@ public class CapeSwapper : UObject
         if (!missing) Log.Write(number == 0 ? "Wearing the game's cape" : $"Wearing {number}.png ({Available().Count} capes in {Folder()})");
     }
 
+    public void SetCharacterLighting(bool lit)
+    {
+        if (settings == null || settings.CharacterLighting == lit) return;
+        settings.CharacterLighting = lit;
+        UGameplayStatics.SaveGameToSlot(settings, SettingsSlot, 0);
+        // We must drop all cached targets since their format is wrong now
+        capes.Clear();
+        mresTextures.Clear();
+        defaultMres = null;
+        ours.Clear();
+        Apply();
+    }
+
     /// <summary>Reads the PNGs again, to see changes made to them while playing.</summary>
     public void Reload()
     {
@@ -139,33 +156,48 @@ public class CapeSwapper : UObject
     /// <summary>Call regularly: puts the cape back on a new character, or after the game changed or put back its own.</summary>
     public void Check()
     {
-        if (Cape == 0 || owner == null) return;
+        if (owner == null) return;
         var current = World.Player(owner) as ACharacter;
-        if (current != character || (worn == null && !missing))
+        bool shouldApply = current != character || 
+                           (worn == null && !missing && Cape != 0) || 
+                           (worn == null && Cape == 0 && settings != null && !string.IsNullOrEmpty(settings.GameCapePath));
+        if (shouldApply)
         {
             Apply();
             return;
         }
         if (worn == null) return;
-        if (current != null) Dress(current);
+        if (current != null && Cape != 0) Dress(current);
         // The main menu has no character of the player's, only the one by the campfire.
-        if (current == null || PreviewShown()) DressPreviews();
+        if ((current == null || PreviewShown()) && worn != null) DressPreviews();
     }
 
     void Apply()
     {
         Restore();
         missing = false;
-        if (Cape == 0 || owner == null) return;
+        if (owner == null) return;
         character = World.Player(owner) as ACharacter;
-        worn = Load(Cape);
+        if (Cape == 0)
+        {
+            if (settings != null && gameCape == null && !string.IsNullOrEmpty(settings.GameCapePath))
+                gameCape = UKismetSystemLibrary.LoadAsset_Blocking(UKismetSystemLibrary.Conv_SoftObjPathToSoftObjRef(UKismetSystemLibrary.MakeSoftObjectPath(settings.GameCapePath))) as UTexture;
+            if (settings != null && gameMres == null && !string.IsNullOrEmpty(settings.GameMresPath))
+                gameMres = UKismetSystemLibrary.LoadAsset_Blocking(UKismetSystemLibrary.Conv_SoftObjPathToSoftObjRef(UKismetSystemLibrary.MakeSoftObjectPath(settings.GameMresPath))) as UTexture;
+            worn = gameCape;
+        }
+        else worn = Load(Cape);
+
         if (worn == null)
         {
-            missing = true;
-            Log.Write($"Couldn't read {Cape}.png in {Folder()}: a cape is 64x32 or 22x17 (Java), or 32x16 (the game's layout)");
+            if (Cape != 0)
+            {
+                missing = true;
+                Log.Write($"Couldn't read {Cape}.png in {Folder()}: a cape is 64x32 or 22x17 (Java), or 32x16 (the game's layout)");
+            }
             return;
         }
-        if (character != null) Dress(character);
+        if (character != null && Cape != 0) Dress(character);
         if (character == null || PreviewShown()) DressPreviews();
     }
 
@@ -247,11 +279,32 @@ public class CapeSwapper : UObject
         instances.Add(instance);
         // What to put back when the cape changes: the game's, never a cape of ours.
         if (ours.Contains(cape)) cape = gameCape;
-        else gameCape = cape;
+        else 
+        {
+            gameCape = cape;
+            if (cape != null)
+            {
+                var path = UKismetSystemLibrary.GetPathName(cape);
+                if (settings != null && settings.GameCapePath != path)
+                {
+                    settings.GameCapePath = path;
+                    UGameplayStatics.SaveGameToSlot(settings, SettingsSlot, 0);
+                }
+            }
+        }
         oldCapes.Add(cape);
         var mres = instance.K2_GetTextureParameterValue(MresParameter);
         if (mres != null && ours.Contains(mres)) mres = gameMres;
-        else if (mres != null) gameMres = mres;
+        else if (mres != null) 
+        {
+            gameMres = mres;
+            var path = UKismetSystemLibrary.GetPathName(mres);
+            if (settings != null && settings.GameMresPath != path)
+            {
+                settings.GameMresPath = path;
+                UGameplayStatics.SaveGameToSlot(settings, SettingsSlot, 0);
+            }
+        }
         oldMres.Add(mres);
         Rewear(instance);
         return true;
@@ -260,7 +313,11 @@ public class CapeSwapper : UObject
     void Rewear(UMaterialInstanceDynamic instance)
     {
         instance.SetTextureParameterValue(TextureParameter, worn);
-        if (instance.K2_GetTextureParameterValue(MresParameter) != null) instance.SetTextureParameterValue(MresParameter, Mres(Cape));
+        if (instance.K2_GetTextureParameterValue(MresParameter) != null) 
+        {
+            var mres = (Cape == 0 && File("0_MRES") == null) ? gameMres : Mres(Cape);
+            instance.SetTextureParameterValue(MresParameter, mres);
+        }
     }
 
     /// <summary>
@@ -447,7 +504,8 @@ public class CapeSwapper : UObject
     /// </summary>
     UTextureRenderTarget2D? NewTarget(int width, int height)
     {
-        var target = UKismetRenderingLibrary.CreateRenderTarget2D(owner, 1, 1, ETextureRenderTargetFormat.RTF_RGBA8_SRGB,
+        var format = (settings != null && settings.CharacterLighting) ? ETextureRenderTargetFormat.RTF_RGBA8 : ETextureRenderTargetFormat.RTF_RGBA8_SRGB;
+        var target = UKismetRenderingLibrary.CreateRenderTarget2D(owner, 1, 1, format,
             new FLinearColor(), false, false);
         if (target == null) return null;
         target.Filter = TextureFilter.TF_Nearest;
