@@ -93,7 +93,6 @@ public interface ISettingsEvents
     void OnKeybindChanged(string Id, FKey Key, FKey SecondaryKey);
     void OnSettingChanged(string Id, string Value);
     void OnSettingsReset();
-    void OnWidgetAdded(string Id);
 }
 
 /// <summary>On a Widget setting that saves its own values: shows the page's Reset button.</summary>

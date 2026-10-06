@@ -27,5 +27,4 @@ public class ModActor : AActor, ISettingsEvents
     public void OnKeybindChanged(string id, FKey key, FKey secondaryKey) { }
     public void OnSettingChanged(string id, string value) { }
     public void OnSettingsReset() { }
-    public void OnWidgetAdded(string id) { }
 }

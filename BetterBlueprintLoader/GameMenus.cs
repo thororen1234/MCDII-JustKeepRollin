@@ -75,6 +75,9 @@ public class GameMenus : AActor
     UAS_SpicewoodTabListContainer? inGameTabs;
     UAS_SpicewoodTabListContainer? subscribedInGameTabs;
     UCommonButtonBase? inGameModsButton;
+    // Whether the MODS tab was the chosen one at the last Poll: a controller's bumpers choose it without the tabs saying
+    // so, so it opens when it becomes chosen, however that happened.
+    bool inGameModsSelected;
     string inGameModsTag = "";
     bool restoreInGameInventory;
 
@@ -148,6 +151,7 @@ public class GameMenus : AActor
         inGameNavigation = widget as UAS_InGameNavigation_Activatable;
         inGameTabs = inGameNavigation?.TabListContainer;
         inGameModsButton = null;
+        inGameModsSelected = false;
         inGameModsTag = "";
     }
 
@@ -300,6 +304,7 @@ public class GameMenus : AActor
         {
             inGameTabs = current;
             inGameModsButton = null;
+            inGameModsSelected = false;
             inGameModsTag = "";
         }
         if (inGameTabs == null || !UKismetSystemLibrary.IsValid(inGameTabs) || inGameTabs.RegisteredTabs.Count == 0) return;
@@ -313,6 +318,13 @@ public class GameMenus : AActor
             inGameModsButton.SetIsInteractableWhenSelected(true);
             inGameModsButton.OnButtonBaseClicked += OnInGameModsClicked;
         }
+        var selected = inGameModsButton != null && UKismetSystemLibrary.IsValid(inGameModsButton) && inGameModsButton.GetSelected();
+        if (selected && !inGameModsSelected)
+        {
+            Note("In-game MODS tab became the chosen one");
+            OpenInGameMods();
+        }
+        inGameModsSelected = selected;
         if (registered && inGameModsTag == "") inGameModsTag = tagName;
         if (registered && subscribedInGameTabs != inGameTabs)
         {

@@ -922,7 +922,6 @@ public class ModsPage : UUserWidget
         if (widget == null) return;
         settingWidgets.Add(widget);
         Add(widget, 10);
-        if (widget is ISettingsEvents target) target.OnWidgetAdded(setting.Id);
         manager.SendSaved(folder, widget);
     }
 
