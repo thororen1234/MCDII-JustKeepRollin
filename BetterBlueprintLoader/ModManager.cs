@@ -104,9 +104,6 @@ public class ModManager : AActor
             Log.Write("The game crashed while the Mods page was being made in the game's look: it's made plain from now on");
             Save();
         }
-        var game = UGameVersion.BuildVersion();
-        if (game != "" && !UKismetStringLibrary.StartsWith(game, BuiltForBuild, ESearchCase.CaseSensitive))
-            Warning = $"The game has updated since BetterBlueprintLoader was made (for {BuiltForGame}): if a level crashes while loading, update it.";
         menus = GameMenus.Start(this);
         waitStarted = World.RealTime(this);
         characterSince = -1;
