@@ -4,7 +4,7 @@ Mods for Minecraft Dungeons II, written in C# with [NeoRuneExtended](https://git
 
 | Mod | What it does | Online Bugs/Issues | Offline Bugs/Issues
 | - | - | - | - |
-| [JustKeepRollin](JustKeepRollin) | Roll in mid-air | free rolls and some teleporting seemingly caused by server desync | ?
+| [JustKeepRolling](JustKeepRolling) | Roll in mid-air | free rolls and some teleporting seemingly caused by server desync | ?
 | [Emoticons](Emoticons) | The emotes of mchorse's [Emoticons](https://github.com/mchorse/Emoticons) Minecraft mod | ? | ?
 | [DragSalvage](DragSalvage) | Select items to salvage by dragging over them | ? | ?
 | [CustomSkins](CustomSkins) | Wear your own skin PNGs, switched live (only you see them) | ? | ?
