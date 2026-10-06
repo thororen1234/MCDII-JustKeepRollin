@@ -5,7 +5,7 @@ using UE.GameplayAbilities;
 using UE.GameplayTags;
 using UE.SpicewoodGAS;
 
-namespace JustKeepRollin;
+namespace JustKeepRolling;
 
 /// <summary>
 /// Lets you roll in the air.
@@ -14,8 +14,8 @@ public class ModActor : AActor
 {
     const float CheckInterval = 2f;
 
-    HashSet<UGameplayAbility> patched = new();
-    HashSet<FName> rollTags = new();
+    readonly HashSet<UGameplayAbility> patched = [];
+    readonly HashSet<FName> rollTags = [];
 
     protected override void ReceiveBeginPlay()
     {
@@ -89,7 +89,7 @@ public class ModActor : AActor
     /// Removes the tags that tie the roll to the ground: "on ground" tags from a required list,
     /// and air, jump and fall tags from a blocked list.
     /// </summary>
-    FGameplayTagContainer WithoutAirRules(FGameplayTagContainer tags, bool required)
+    static FGameplayTagContainer WithoutAirRules(FGameplayTagContainer tags, bool required)
     {
         var kept = new List<FGameplayTag>();
         bool changed = false;

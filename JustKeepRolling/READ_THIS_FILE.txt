@@ -27,4 +27,4 @@ INSTALL
 UNINSTALL
 ---------
 
-Delete the JustKeepRollin folder from ~mods.
+Delete the JustKeepRolling folder from ~mods.
