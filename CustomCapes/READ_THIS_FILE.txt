@@ -1,0 +1,48 @@
+CUSTOM CAPES
+============
+
+Wear your own capes in Minecraft Dungeons II, Java Edition capes included, and switch them while you play!
+
+Put your capes in the Capes folder (see INSTALL) as 1.png, 2.png, 3.png... up to 20.png. A cape can be:
+    - a Java Edition cape: 64x32 (or an HD size of it, like 128x64), or just the cape part, 22x17
+    - a cape in the game's own layout: 32x16 (press F5 to save the game's cape you wear as one, to start from)
+
+To pick a cape, open your inventory and go to Collectibles, where the capes are: the Custom Capes row under the game's capes has a button for each cape, and one for the game's cape. Your choice is remembered.
+
+If you wear one of the game's capes, your custom cape takes its place and swings like it. If you wear none, you get a cape of the game's shape that hangs still.
+
+Keys:
+    F3  Wear the next cape (after the last one, the game's cape again)
+    F4  Read the cape files again, to see changes you just saved in your image editor
+    F5  Save the game's cape you wear as a PNG in Capes\_game, to start your own from
+
+To change these keys, or add a second key (like a controller button) to any of them, open the game's Settings, Mods, Custom Capes.
+
+A cape can have its own <number>_MRES.png next to it, in the same layout and size as the cape (red metallic, green roughness, blue glow, alpha subsurface). Without one, it gets a plain one.
+
+Only you can see your custom cape. Everyone else sees the cape you picked in the game's own menu.
+
+REQUIREMENTS
+------------
+
+- BetterBlueprintLoader, which must also be installed
+
+INSTALL
+-------
+
+1. Close the game, and fully close the Minecraft Launcher if you use it.
+
+2. Open your Minecraft Dungeons II Paks folder.
+    Steam: Right click the game in your library, then Manage > Browse local files, then open Dungeons\Content\Paks
+    Minecraft Launcher: C:\XboxGames\Minecraft Dungeons II\Content\Dungeons\Content\Paks
+
+3. Create a folder called ~mods inside the Paks folder if there is not one already.
+
+4. Extract this zip into ~mods, so the files end up in: Paks\~mods\CustomCapes
+
+5. Create a folder called Capes inside Paks\~mods\CustomCapes and put your capes there.
+
+UNINSTALL
+---------
+
+Delete the CustomCapes folder from ~mods.

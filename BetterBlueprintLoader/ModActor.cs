@@ -1,5 +1,6 @@
 using NeoRune;
 using UE.Engine;
+using UE.InputCore;
 
 namespace BetterBlueprintLoader;
 
@@ -18,6 +19,13 @@ namespace BetterBlueprintLoader;
 [ModSetting.Keybind(ModManager.RestartKeySetting, "Restart Mods Key", Default = "F12",
     Description = "Restarts the mods from anywhere, like the Restart button.")]
 [ModSetting.Text("If the game crashes while a mod is starting, BetterBlueprintLoader turns that mod off and tells you on the main menu. Turn it back on here when the mod is updated.")]
-public class ModActor : AActor, IModSettings
+#pragma warning disable NR0001
+public class ModActor : AActor, ISettingsEvents
+#pragma warning restore NR0001
 {
+    public void OnButtonPressed(string id) { }
+    public void OnKeybindChanged(string id, FKey key, FKey secondaryKey) { }
+    public void OnSettingChanged(string id, string value) { }
+    public void OnSettingsReset() { }
+    public void OnWidgetAdded(string id) { }
 }

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using NeoRune;
 using UE.Angelscript;
+using UE.CommonGame;
 using UE.CommonUI;
 using UE.CoreUObject;
 using UE.Engine;
@@ -20,7 +21,6 @@ namespace BetterBlueprintLoader;
 /// </summary>
 public class GameMenus : AActor
 {
-    const string SettingsScreenClass = "/SpicewoodSettings/Spicewood/UI/SettingsScreen/W_SettingsScreen_Activatable.W_SettingsScreen_Activatable_C";
     // The settings' tabs are named by gameplay tags, and only tags the game has work: the Mods tab uses the settings'
     // own parent tag, which none of the game's tabs uses.
     const string TabTag = "SW.UI.Settings";
@@ -31,6 +31,7 @@ public class GameMenus : AActor
 
     ModManager? manager;
     WidgetWatcher? settingsScreens;
+    WidgetWatcher? inGameNavigations;
     WidgetWatcher? lobbies;
     PausableTimer? poll;
     // Over the game's UI: the page is on the viewport, not in the settings screen. Putting a widget anywhere inside the
@@ -68,6 +69,14 @@ public class GameMenus : AActor
     string otherTab = "";
     UAS_InitialLobbyScreen? lobby;
     UCommonButtonBase? menuButton;
+    // The row across the top of an in-game menu (Inventory, Collectibles, Map … System). MODS opens the settings
+    // screen on its existing Mods tab, rather than trying to make the settings page fit into every one of those views.
+    UAS_InGameNavigation_Activatable? inGameNavigation;
+    UAS_SpicewoodTabListContainer? inGameTabs;
+    UAS_SpicewoodTabListContainer? subscribedInGameTabs;
+    UCommonButtonBase? inGameModsButton;
+    string inGameModsTag = "";
+    bool restoreInGameInventory;
 
     public static GameMenus? Start(ModManager manager)
     {
@@ -82,13 +91,12 @@ public class GameMenus : AActor
 
     void Watch()
     {
-        var settingsClass = Unreal.LoadClass<UUserWidget>(SettingsScreenClass);
-        if (settingsClass == null) Log.Write("The game's settings screen wasn't found: no Mods tab");
-        else
-        {
-            settingsScreens = WidgetWatcher.Start(this, settingsClass, 0.1f);
-            if (settingsScreens != null) settingsScreens.Found += OnSettingsScreen;
-        }
+        // Both the main-menu and in-game screens derive from this class. Watching the base class also survives the
+        // game making a different settings-screen Blueprint for either context.
+        settingsScreens = WidgetWatcher.Start(this, Unreal.ClassOf<UAS_SettingsScreen_Activatable>(), 0.1f);
+        if (settingsScreens != null) settingsScreens.Found += OnSettingsScreen;
+        inGameNavigations = WidgetWatcher.Start(this, Unreal.ClassOf<UAS_InGameNavigation_Activatable>(), 0.1f);
+        if (inGameNavigations != null) inGameNavigations.Found += OnInGameNavigation;
         lobbies = WidgetWatcher.Start(this, Unreal.ClassOf<UAS_InitialLobbyScreen>(), 0.25f);
         if (lobbies != null) lobbies.Found += OnLobby;
         // Menus pause the game: a timer that runs anyway keeps the tab there and labels what was added.
@@ -109,15 +117,38 @@ public class GameMenus : AActor
         settingsScreen = screen;
         look = GameLook.From(this, screen, manager != null && manager.PlainPage);
         if (look != null) Note(look.Load());
-        settingsList = GameUI.Find(screen, "ListView_Settings") as UGameSettingListView;
-        detailsView = GameUI.Find(screen, "Details_Settings");
-        tabs = GameUI.Find(screen, "TopSettingsTabs") as USpicewoodTabListWidget;
-        settingsPanel = GameUI.Find(screen, "Settings_Panel");
+        FindSettingsWidgets();
         page?.RemoveFromParent();
         page = null;
         pageShown = false;
         tabChosen = false;
         if (tabs == null || settingsPanel == null) Note($"No place for the Mods tab in the settings: tabs {tabs != null}, panel {settingsPanel != null}");
+    }
+
+    /// <summary>
+    /// The in-game settings screen can be reported before its child widgets are constructed. Look again on each poll
+    /// until they are there (and if the game reconstructs them while its settings screen stays open).
+    /// </summary>
+    void FindSettingsWidgets()
+    {
+        if (settingsScreen == null || !UKismetSystemLibrary.IsValid(settingsScreen)) return;
+        var foundTabs = GameUI.Find(settingsScreen, "TopSettingsTabs") as USpicewoodTabListWidget;
+        if (foundTabs != tabs)
+        {
+            tabs = foundTabs;
+            tabButton = null;
+        }
+        settingsList = GameUI.Find(settingsScreen, "ListView_Settings") as UGameSettingListView;
+        detailsView = GameUI.Find(settingsScreen, "Details_Settings");
+        settingsPanel = GameUI.Find(settingsScreen, "Settings_Panel");
+    }
+
+    void OnInGameNavigation(UUserWidget widget)
+    {
+        inGameNavigation = widget as UAS_InGameNavigation_Activatable;
+        inGameTabs = inGameNavigation?.TabListContainer;
+        inGameModsButton = null;
+        inGameModsTag = "";
     }
 
     void Poll()
@@ -133,7 +164,11 @@ public class GameMenus : AActor
             tabs = null;
             tabChosen = false;
         }
-        else if (settingsScreen != null && !settingsScreen.IsVisible()) HidePage($"the settings screen isn't visible ({settingsScreen.GetVisibility()})");
+        else if (settingsScreen != null)
+        {
+            if (!settingsScreen.IsVisible()) HidePage($"the settings screen isn't visible ({settingsScreen.GetVisibility()})");
+            else FindSettingsWidgets();
+        }
         if (tabs != null && !UKismetSystemLibrary.IsValid(tabs)) tabs = null;
         if (settingsPanel != null && !UKismetSystemLibrary.IsValid(settingsPanel)) settingsPanel = null;
         if (page != null && !UKismetSystemLibrary.IsValid(page))
@@ -181,12 +216,20 @@ public class GameMenus : AActor
                 Note($"Mods tab: a second later, page on the viewport {page.IsInViewport()}, visible {page.IsVisible()}");
             }
         }
+        // MODS is a launcher rather than one of the navigation screen's content panes. Put the game's selection back
+        // on Inventory before opening Settings, so Esc returns to the normal highlighted Inventory tab.
+        if (restoreInGameInventory)
+        {
+            restoreInGameInventory = false;
+            RestoreInGameInventory();
+        }
         if (openSettings)
         {
             openSettings = false;
             OpenSettings();
         }
         if (tabs != null) KeepTab();
+        KeepInGameTab();
         if (lobby != null) KeepMenuButton();
         // What this did is in the log now: if the game crashes next, the log says how far it got.
         manager?.Flush();
@@ -241,6 +284,93 @@ public class GameMenus : AActor
         tabChosen = true;
         modsTabChosen = tabId.TagName.ToString() == TabTag;
         otherTab = tabId.TagName.ToString();
+    }
+
+    /// <summary>Keeps a MODS tab directly after the game's in-game navigation, including SYSTEM.</summary>
+    void KeepInGameTab()
+    {
+        if (inGameNavigation == null || !UKismetSystemLibrary.IsValid(inGameNavigation))
+        {
+            inGameNavigation = null;
+            inGameTabs = null;
+            return;
+        }
+        var current = inGameNavigation.TabListContainer;
+        if (current != inGameTabs)
+        {
+            inGameTabs = current;
+            inGameModsButton = null;
+            inGameModsTag = "";
+        }
+        if (inGameTabs == null || !UKismetSystemLibrary.IsValid(inGameTabs) || inGameTabs.RegisteredTabs.Count == 0) return;
+        var tag = inGameTabs.TabGroup;
+        var tagName = tag.TagName.ToString();
+        if (tagName == "") return;
+        var info = inGameTabs.GetRegisteredTabInfo(tag, out var registered);
+        if (registered && info.CreatedButton != null && info.CreatedButton != inGameModsButton)
+        {
+            inGameModsButton = info.CreatedButton;
+            inGameModsButton.SetIsInteractableWhenSelected(true);
+            inGameModsButton.OnButtonBaseClicked += OnInGameModsClicked;
+        }
+        if (registered && inGameModsTag == "") inGameModsTag = tagName;
+        if (registered && subscribedInGameTabs != inGameTabs)
+        {
+            inGameTabs.OnTabSelected += OnInGameTabSelected;
+            inGameTabs.OnTabSelectedByPlayer += OnInGameTabSelected;
+            subscribedInGameTabs = inGameTabs;
+        }
+        if (!registered)
+        {
+            if (!inGameTabs.RegisterPseudoTab(tag, TabLabel)) return;
+            inGameModsTag = tagName;
+            if (subscribedInGameTabs != inGameTabs)
+            {
+                inGameTabs.OnTabSelected += OnInGameTabSelected;
+                inGameTabs.OnTabSelectedByPlayer += OnInGameTabSelected;
+                subscribedInGameTabs = inGameTabs;
+            }
+        }
+    }
+
+    /// <summary>The top-bar MODS tab opens the same page as Settings &gt; Mods.</summary>
+    void OnInGameTabSelected(FGameplayTag tabId)
+    {
+        if (tabId.TagName.ToString() != inGameModsTag) return;
+        OpenInGameMods();
+    }
+
+    void OnInGameModsClicked(UCommonButtonBase? button) => OpenInGameMods();
+
+    void OpenInGameMods()
+    {
+        Note("In-game MODS tab chosen");
+        restoreInGameInventory = true;
+        openSettings = true;
+        openTab = true;
+    }
+
+    void RestoreInGameInventory()
+    {
+        if (inGameTabs == null || !UKismetSystemLibrary.IsValid(inGameTabs)) return;
+        var first = new FGameplayTag();
+        bool hasFirst = false;
+        foreach (var tab in inGameTabs.RegisteredTabs)
+        {
+            var name = tab.RegisteredName.TagName.ToString();
+            if (name == inGameModsTag) continue;
+            if (!hasFirst)
+            {
+                first = tab.RegisteredName;
+                hasFirst = true;
+            }
+            if (tab.ButtonText.ToString() == "Inventory")
+            {
+                inGameTabs.SelectTab(tab.RegisteredName, false);
+                return;
+            }
+        }
+        if (hasFirst) inGameTabs.SelectTab(first, false);
     }
 
     /// <summary>
@@ -596,6 +726,7 @@ public class GameMenus : AActor
     {
         var store = UUIStoreSubsystemLibrary.Get()?.GetStore();
         var player = lobby != null && UKismetSystemLibrary.IsValid(lobby) ? lobby.GetOwningLocalPlayer() : null;
+        if (player == null) player = UCommonUIExtensions.GetLocalPlayerFromController(World.PlayerController(this));
         if (store == null || player == null)
         {
             Note($"Couldn't open the settings: UI store {store != null}, player {player != null}");

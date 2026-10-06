@@ -8,22 +8,20 @@ using UE.Slate;
 using UE.SlateCore;
 using UE.UMG;
 
-namespace CustomSkins;
+namespace CustomCapes;
 
 /// <summary>
-/// Custom Skins: wear your own skin PNGs, switched live from the inventory's Collectibles screen or with F6. Only you
-/// see them: everyone else sees the skin picked in the game's own menu, so that one is the fallback. The keys are
-/// settings in BetterBlueprintLoader's Mods tab.
+/// Custom Capes: wear your own cape PNGs, picked in the inventory's Collectibles screen under the game's capes, or with
+/// F3. Only you see them: everyone else sees the cape picked in the game's own menu. The keys are settings in
+/// BetterBlueprintLoader's Mods tab.
 /// </summary>
 [ModSetting.Heading("Keys")]
-[ModSetting.Keybind(NextSetting, "Next Skin", Default = DefaultNextKey,
-    Description = "Wears the next skin in the Skins folder; after the last one, the game's skin again.")]
-[ModSetting.Keybind(ReloadSetting, "Reload Skins", Default = DefaultReloadKey,
-    Description = "Reads the skin files again, to see changes you just saved in your image editor.")]
-[ModSetting.Keybind(ExportSetting, "Save Game Skin", Default = DefaultExportKey,
-    Description = "Saves the skin picked in the game's menu as a PNG in the Skins folder's _game folder, to start your own from.")]
-[ModSetting.Keybind(InfoSetting, "Show Info", Default = DefaultInfoKey,
-    Description = "Writes what the mod knows about your character to the log and shows it. If something doesn't work, press it in game, press Copy and send the log.")]
+[ModSetting.Keybind(NextSetting, "Next Cape", Default = DefaultNextKey,
+    Description = "Wears the next cape in the Capes folder; after the last one, the game's cape again.")]
+[ModSetting.Keybind(ReloadSetting, "Reload Capes", Default = DefaultReloadKey,
+    Description = "Reads the cape files again, to see changes you just saved in your image editor.")]
+[ModSetting.Keybind(ExportSetting, "Save Game Cape", Default = DefaultExportKey,
+    Description = "Saves the game's cape you wear as a PNG in the Capes folder's _game folder, to start your own from.")]
 #pragma warning disable NR0001
 public class ModActor : AActor, ISettingsEvents
 #pragma warning restore NR0001
@@ -31,30 +29,28 @@ public class ModActor : AActor, ISettingsEvents
     const string NextSetting = "next_key";
     const string ReloadSetting = "reload_key";
     const string ExportSetting = "export_key";
-    const string InfoSetting = "info_key";
-    const string DefaultNextKey = "F6";
-    const string DefaultReloadKey = "F7";
-    const string DefaultExportKey = "F8";
-    const string DefaultInfoKey = "F9";
-    // The game puts its skin back when the character or gear changes: this often, the custom one goes back on.
+    const string DefaultNextKey = "F3";
+    const string DefaultReloadKey = "F4";
+    const string DefaultExportKey = "F5";
+    // The game puts its cape back when the character or gear changes: this often, the custom one goes back on.
     const float CheckInterval = 1f;
     const float MenuInterval = 0.25f;
     // The inventory's Collectibles screen (capes and pets), and the screen around it, which is active while it shows.
     const string CollectiblesClass = "W_Collectibles.W_Collectibles_C";
     const string CollectiblesScreenClass = "W_Collectibles_Activatable.W_Collectibles_Activatable_C";
-    // The Collectibles item grid: the skin row goes in the list it's in.
+    // The Collectibles item grid: the cape row goes in the list it's in.
     const string ItemGridName = "ItemGrid";
     // Where the row sits when the item grid has no list to go in: just past the scrollbar, with its bottom level with
     // the scrollbar's.
     const float RowLeft = 16;
     const float RowBottom = 196;
 
-    SkinSwapper? skins;
+    CapeSwapper? capes;
     // When Check and WatchMenu run next (real time): from the tick, which keeps running while menus pause the game.
-    // Not PausableTimers: calling this actor's methods from one crashes the game.
+    // Not PausableTimers: calling a ModActor's methods from one crashed the game (CustomSkins, 2026-10-05).
     double nextCheck;
     double nextMenuWatch;
-    SkinRow? row;
+    CapeRow? row;
     UUserWidget? rowIn;
     // The Collectibles item grid: a floating row sits over its bottom.
     UWidget? grid;
@@ -63,12 +59,6 @@ public class ModActor : AActor, ISettingsEvents
     bool menuShown;
     bool started;
 
-    protected override void ReceiveBeginPlay()
-    {
-        // Menus can pause the game, and the inventory, which shows the character, is one.
-        SetTickableWhenPaused(true);
-    }
-
     // The keys, each setting's two (the second empty unless set in the Mods tab).
     FKey nextKey = new FKey { KeyName = DefaultNextKey };
     FKey nextKey2 = new FKey();
@@ -76,8 +66,12 @@ public class ModActor : AActor, ISettingsEvents
     FKey reloadKey2 = new FKey();
     FKey exportKey = new FKey { KeyName = DefaultExportKey };
     FKey exportKey2 = new FKey();
-    FKey infoKey = new FKey { KeyName = DefaultInfoKey };
-    FKey infoKey2 = new FKey();
+
+    protected override void ReceiveBeginPlay()
+    {
+        // Menus can pause the game, and the inventory, which shows the character, is one.
+        SetTickableWhenPaused(true);
+    }
 
     public void OnKeybindChanged(string id, FKey key, FKey secondaryKey)
     {
@@ -96,11 +90,6 @@ public class ModActor : AActor, ISettingsEvents
             exportKey = key;
             exportKey2 = secondaryKey;
         }
-        else if (id == InfoSetting)
-        {
-            infoKey = key;
-            infoKey2 = secondaryKey;
-        }
     }
 
     public void OnSettingsReset()
@@ -108,11 +97,9 @@ public class ModActor : AActor, ISettingsEvents
         nextKey = new FKey { KeyName = DefaultNextKey };
         reloadKey = new FKey { KeyName = DefaultReloadKey };
         exportKey = new FKey { KeyName = DefaultExportKey };
-        infoKey = new FKey { KeyName = DefaultInfoKey };
         nextKey2 = new FKey();
         reloadKey2 = new FKey();
         exportKey2 = new FKey();
-        infoKey2 = new FKey();
     }
 
     public void OnSettingChanged(string id, string value) { }
@@ -124,8 +111,7 @@ public class ModActor : AActor, ISettingsEvents
 
     public override void ReceiveTick(float deltaSeconds)
     {
-        if (!started) { started = true; skins = SkinSwapper.Create(this); }
-        skins?.UpdateFace();
+        if (!started) { started = true; capes = CapeSwapper.Create(this); }
         var now = World.RealTime(this);
         if (now >= nextCheck)
         {
@@ -138,31 +124,26 @@ public class ModActor : AActor, ISettingsEvents
             WatchMenu();
         }
         var controller = World.PlayerController(this);
-        if (controller == null || skins == null) return;
+        if (controller == null || capes == null) return;
         if (Pressed(controller, nextKey, nextKey2))
         {
-            skins.Next();
+            capes.Next();
             row?.Refresh();
         }
         if (Pressed(controller, reloadKey, reloadKey2))
         {
-            skins.Reload();
+            capes.Reload();
             row?.Refresh();
         }
-        if (Pressed(controller, exportKey, exportKey2)) skins.ExportGameSkin();
-        if (Pressed(controller, infoKey, infoKey2))
-        {
-            skins.LogInfo();
-            Log.Show(this);
-        }
+        if (Pressed(controller, exportKey, exportKey2)) capes.ExportGameCape();
     }
 
-    void Check() => skins?.Check();
+    void Check() => capes?.Check();
 
-    /// <summary>Puts the skin row in the Collectibles screen when it opens, with the skins in the folder now.</summary>
+    /// <summary>Puts the cape row in the Collectibles screen when it opens, with the capes in the folder now.</summary>
     void WatchMenu()
     {
-        if (skins == null) return;
+        if (capes == null) return;
         UUserWidget? collectibles = null;
         bool shown = false;
         UWidgetBlueprintLibrary.GetAllWidgetsOfClass(this, out var widgets, Unreal.ClassOf<UUserWidget>(), false);
@@ -176,7 +157,7 @@ public class ModActor : AActor, ISettingsEvents
 
         if (shown && !menuShown)
         {
-            if (row == null) row = SkinRow.Create(this, skins);
+            if (row == null) row = CapeRow.Create(this, capes);
             else row.Refresh();
         }
         menuShown = shown;
@@ -214,7 +195,7 @@ public class ModActor : AActor, ISettingsEvents
             {
                 floating = false;
                 (scroll.AddChild(row) as UScrollBoxSlot)?.SetPadding(new FMargin { Top = 8 });
-                Log.Write($"Skin row added to the Collectibles screen, at the end of {UKismetSystemLibrary.GetObjectName(scroll)}");
+                Log.Write($"Cape row added to the Collectibles screen, at the end of {UKismetSystemLibrary.GetObjectName(scroll)}");
                 return;
             }
         }
@@ -228,7 +209,7 @@ public class ModActor : AActor, ISettingsEvents
             place?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Left);
             place?.SetVerticalAlignment(EVerticalAlignment.VAlign_Bottom);
             place?.SetPadding(new FMargin { Left = RowLeft, Bottom = RowBottom });
-            Log.Write($"Skin row added to the Collectibles screen, beside the item grid's scrollbar");
+            Log.Write($"Cape row added to the Collectibles screen, beside the item grid's scrollbar");
             return;
         }
         // Or the nearest list the item grid is in: the row goes at its end.
@@ -238,13 +219,13 @@ public class ModActor : AActor, ISettingsEvents
         {
             floating = false;
             list.AddChildToVerticalBox(row)?.SetPadding(new FMargin { Top = 8 });
-            Log.Write($"Skin row added to the Collectibles screen, in {UKismetSystemLibrary.GetObjectName(list)}");
+            Log.Write($"Cape row added to the Collectibles screen, in {UKismetSystemLibrary.GetObjectName(list)}");
             return;
         }
         floating = true;
         row.ShowAt(new FVector2D(), new FVector2D(), ScreenWidget.AboveGameUI);
         FollowGrid();
-        Log.Write($"Skin row shown over the Collectibles screen (item grid {(grid == null ? "not found" : "not in a list")})");
+        Log.Write($"Cape row shown over the Collectibles screen (item grid {(grid == null ? "not found" : "not in a list")})");
     }
 
     /// <summary>The first scroll box under a widget, or null.</summary>

@@ -145,15 +145,13 @@ public class ModManager : AActor
     {
         if (settings == null) return;
         var found = Find();
-        // The saved order first, then mods new since, which go at its end.
-        foreach (var mod in settings.Order)
-            if (found.Contains(mod)) Mods.Add(mod);
+        Mods.Clear();
+        settings.Order.Clear();
         foreach (var mod in found)
-            if (!Mods.Contains(mod))
-            {
-                Mods.Add(mod);
-                settings.Order.Add(mod);
-            }
+        {
+            Mods.Add(mod);
+            settings.Order.Add(mod);
+        }
         for (int i = 0; i < Mods.Count; i++)
         {
             var folder = Short(Mods[i]);
@@ -197,7 +195,39 @@ public class ModManager : AActor
             if (!mods.Contains(mod)) mods.Add(mod);
             if (isActor && !withActor.Contains(mod)) withActor.Add(mod);
         }
+        for (int i = 0; i < mods.Count - 1; i++)
+        {
+            for (int j = i + 1; j < mods.Count; j++)
+            {
+                if (IsGreater(mods[i], mods[j]))
+                {
+                    var temp = mods[i];
+                    mods[i] = mods[j];
+                    mods[j] = temp;
+                }
+            }
+        }
         return mods;
+    }
+
+    static bool IsGreater(string a, string b)
+    {
+        string alphabet = "0123456789AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz_ -";
+        int lenA = UKismetStringLibrary.Len(a);
+        int lenB = UKismetStringLibrary.Len(b);
+        int min = lenA < lenB ? lenA : lenB;
+        for (int i = 0; i < min; i++)
+        {
+            string charA = UKismetStringLibrary.GetSubstring(a, i, 1);
+            string charB = UKismetStringLibrary.GetSubstring(b, i, 1);
+            if (!UKismetStringLibrary.EqualEqual_StrStr(charA, charB))
+            {
+                int idxA = UKismetStringLibrary.FindSubstring(alphabet, charA, false, false, 0);
+                int idxB = UKismetStringLibrary.FindSubstring(alphabet, charB, false, false, 0);
+                return idxA > idxB;
+            }
+        }
+        return lenA > lenB;
     }
 
     /// <summary>Starts a mod, unless it's off. Marked as starting meanwhile: a crash leaves the mark for next time.</summary>
