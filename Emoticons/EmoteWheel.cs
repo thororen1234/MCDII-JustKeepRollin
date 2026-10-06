@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using NeoRune;
+using UE.CommonUI;
 using UE.CoreUObject;
 using UE.Engine;
 using UE.Minimap;
@@ -11,18 +12,25 @@ namespace Emoticons;
 
 /// <summary>
 /// The emote wheel: a page of emotes in a ring around the middle of the screen. Point the mouse at one to pick it;
-/// the mouse wheel turns the page.
+/// the mouse wheel turns the page. Drawn like the game's own wheel (its ring, with the names on its marks, and its
+/// text styles), from the game's assets; in a plain look of its own if they aren't in the game.
 /// </summary>
 public class EmoteWheel : ScreenWidget
 {
-    const int PerPage = 10;
-    const float Size = 780;
-    const float Radius = 290;
-    const float Disc = 640;
+    const string RingMaterial = "/SpicewoodUI/Spicewood/UI/Widget/RadialMenu/MI_UI_RadialMenu_Background.MI_UI_RadialMenu_Background";
+    const string TextStyles = "/OreUI/UI/Typography/TextStyles/";
+    const string ButtonArt = "/OreUI/UI/Button/Role/ListEntry/";
+    const int PerPage = 8;
+    const float Size = 1000;
+    const float Radius = 350;
+    const float Disc = 900;
     const float Middle = 230;
     // Smallest pill; longer names make it wider.
     const float SlotWidth = 120;
     const float SlotHeight = 30;
+    // Widest a name gets: longer ones wrap, and a word too long to wrap (CALCULATED) shrinks. The ones at the sides stay
+    // between the ring's arrow and its edge even when pointed at (1.2 times as big): Radius + 1.2 * LabelWidth / 2 < Disc / 2.
+    const float LabelWidth = 140;
     // How far the mouse must be from the middle (in UI units) to point at an emote.
     const float DeadZone = Middle / 2;
 
@@ -37,6 +45,36 @@ public class EmoteWheel : ScreenWidget
     UTextBlock? title;
     UTextBlock? pageText;
     UButton? stop;
+    // The game's ring: its material draws the panel and the marks the names sit on.
+    UMaterialInstanceDynamic? ring;
+    bool native;
+    // The game's assets, loaded before any of the wheel's widgets is made (loading can let the garbage collector run,
+    // which would destroy widgets made but not yet in the wheel).
+    UMaterialInterface? ringMaterial;
+    UMaterialInterface? buttonNormal;
+    UMaterialInterface? buttonHovered;
+    UMaterialInterface? buttonPressed;
+    List<string> styleNames = new();
+    List<TSubclassOf<UCommonTextStyle>> styleClasses = new();
+
+    void Preload()
+    {
+        ringMaterial = Load(RingMaterial) as UMaterialInterface;
+        buttonNormal = Load($"{ButtonArt}MI_ListEntry_Background-Normal-Base.MI_ListEntry_Background-Normal-Base") as UMaterialInterface;
+        buttonHovered = Load($"{ButtonArt}MI_ListEntry_Background-Normal-Hovered.MI_ListEntry_Background-Normal-Hovered") as UMaterialInterface;
+        buttonPressed = Load($"{ButtonArt}MI_ListEntry_Background-Normal-Pressed.MI_ListEntry_Background-Normal-Pressed") as UMaterialInterface;
+        PreloadStyle("Style_Button_Text");
+        PreloadStyle("Style_SectionHeader1_Text");
+        PreloadStyle("Style_Body_Text");
+    }
+
+    void PreloadStyle(string style)
+    {
+        var styleClass = Unreal.LoadClass<UCommonTextStyle>($"{TextStyles}{style}.{style}_C");
+        if (styleClass == null) return;
+        styleNames.Add(style);
+        styleClasses.Add(styleClass);
+    }
 
     /// <summary>The emote the mouse points at, or -1.</summary>
     public int Hovered => hovered;
@@ -48,8 +86,13 @@ public class EmoteWheel : ScreenWidget
     {
         var wheel = UWidgetBlueprintLibrary.Create(mod, Unreal.ClassOf<EmoteWheel>(), World.PlayerController(mod)) as EmoteWheel;
         if (wheel == null) return null;
+        mod.Holding(wheel);
         wheel.mod = mod;
-        if (!wheel.Build()) return null;
+        if (!wheel.Build())
+        {
+            mod.WheelClosed();
+            return null;
+        }
         wheel.Layout();
         var middle = new FVector2D { X = 0.5f, Y = 0.5f };
         wheel.ShowAt(new FVector2D(), middle, ScreenWidget.AboveGameUI);
@@ -63,7 +106,8 @@ public class EmoteWheel : ScreenWidget
 
     public void Close()
     {
-        RemoveFromParent();
+        // Not RemoveFromParent: ShowAt's check would put the closed wheel back on the screen.
+        Hide();
         mod?.WheelClosed();
     }
 
@@ -95,9 +139,10 @@ public class EmoteWheel : ScreenWidget
         int count = OnPage();
         if (dx * dx + dy * dy > DeadZone * DeadZone && count > 0)
         {
-            // Slot 0 is at the top, then clockwise.
-            var angle = UKismetMathLibrary.DegAtan2(dy, dx) + 90;
-            slot = UKismetMathLibrary.Percent_IntInt(UKismetMathLibrary.round(angle / (360.0 / count)) + count, count);
+            // Slot 0 is at the top, then clockwise; each slot's slice is centred on it.
+            var angle = UKismetMathLibrary.DegAtan2(dy, dx) + 90 + 180.0 / PerPage;
+            slot = UKismetMathLibrary.Percent_IntInt(UKismetMathLibrary.FFloor(angle / (360.0 / PerPage)) + PerPage, PerPage);
+            if (slot >= count) slot = -1;
         }
         var next = slot >= 0 ? page * PerPage + slot : -1;
         if (next == hovered) return;
@@ -115,6 +160,13 @@ public class EmoteWheel : ScreenWidget
 
     void Style(int slot, bool lit)
     {
+        // The game's ring lights a quarter (it's made for four choices), so on it the name itself shows what's pointed at.
+        if (native)
+        {
+            labels[slot].SetRenderOpacity(lit ? 1 : 0.6f);
+            buttons[slot].SetRenderScale(lit ? new FVector2D { X = 1.2f, Y = 1.2f } : new FVector2D { X = 1, Y = 1 });
+            return;
+        }
         buttons[slot].SetStyle(ButtonStyle(lit));
         labels[slot].SetColorAndOpacity(Color(lit ? Dark() : White()));
     }
@@ -131,7 +183,8 @@ public class EmoteWheel : ScreenWidget
                 buttons[i].SetVisibility(ESlateVisibility.Collapsed);
                 continue;
             }
-            var angle = -90 + i * 360.0 / count;
+            // On the ring's marks: its arrows (top, right, bottom, left) and its corners.
+            var angle = -90 + i * 360.0 / PerPage;
             slots[i].SetPosition(new FVector2D
             {
                 X = Size / 2 + Radius * UKismetMathLibrary.DegCos(angle),
@@ -144,12 +197,15 @@ public class EmoteWheel : ScreenWidget
         }
         hovered = -1;
         litSlot = -1;
+        ring?.SetScalarParameterValue("Divisions", PerPage);
+        ring?.SetScalarParameterValue("Selected", 0);
         title?.SetText("Emotes");
         pageText?.SetText(Pages() > 1 ? $"Page {page + 1} of {Pages()}" : "");
     }
 
     bool Build()
     {
+        Preload();
         var tree = WidgetTree;
         if (tree == null)
         {
@@ -166,19 +222,38 @@ public class EmoteWheel : ScreenWidget
         box.SetHeightOverride(Size);
         box.AddChild(canvas);
 
-        disc.SetBrush(Rounded(new FLinearColor { R = 0, G = 0, B = 0, A = 0.45f }, Gold(0.5f), 2, Disc / 2));
-        if (!Place(canvas, disc, Disc, Disc)) return false;
+        var ringImage = Ring(tree);
+        native = ringImage != null;
+        if (ringImage != null)
+        {
+            if (!Place(canvas, ringImage, Disc, Disc)) return false;
+        }
+        else
+        {
+            disc.SetBrush(Rounded(new FLinearColor { R = 0, G = 0, B = 0, A = 0.45f }, Gold(0.5f), 2, Disc / 2));
+            if (!Place(canvas, disc, Disc, Disc)) return false;
+        }
 
         for (int i = 0; i < PerPage; i++)
         {
             var button = UGameplayStatics.SpawnObject(Unreal.ClassOf<EmoteButton>(), tree) as EmoteButton;
-            var label = Label(tree, "", 15, White());
+            var label = native ? Styled(tree, "", "Style_Button_Text") : Label(tree, "", 15, White());
             var fit = UGameplayStatics.SpawnObject(Unreal.ClassOf<USizeBox>(), tree) as USizeBox;
-            if (button == null || label == null || fit == null) return false;
+            var shrink = UGameplayStatics.SpawnObject(Unreal.ClassOf<UScaleBox>(), tree) as UScaleBox;
+            if (button == null || label == null || fit == null || shrink == null) return false;
             button.Setup(mod);
+            // On the game's ring, the names are text only: the ring shows which is pointed at.
+            if (native) button.SetStyle(Invisible());
             fit.SetMinDesiredWidth(SlotWidth);
             fit.SetMinDesiredHeight(SlotHeight);
-            var labelSlot = fit.AddChild(label) as USizeBoxSlot;
+            // Long names go on two lines, so the ones at the sides stay on the ring. Wrapping at a set width (not
+            // AutoWrapText) makes a single word too long to wrap measure wider than the box, so the scale box shrinks it.
+            fit.SetMaxDesiredWidth(LabelWidth);
+            label.WrapTextAt = LabelWidth;
+            shrink.SetStretch(EStretch.ScaleToFit);
+            shrink.SetStretchDirection(EStretchDirection.DownOnly);
+            shrink.AddChild(label);
+            var labelSlot = fit.AddChild(shrink) as USizeBoxSlot;
             labelSlot?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
             labelSlot?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
             var fitSlot = button.AddChild(fit) as UButtonSlot;
@@ -194,21 +269,23 @@ public class EmoteWheel : ScreenWidget
             slots.Add(slot);
         }
 
-        title = Label(tree, "Emotes", 20, Gold(1));
-        pageText = Label(tree, "", 13, White());
-        var hint = Label(tree, "Scroll for more", 11, new FLinearColor { R = 0.6f, G = 0.6f, B = 0.6f, A = 1 });
+        title = native ? Styled(tree, "Emotes", "Style_SectionHeader1_Text") : Label(tree, "Emotes", 20, Gold(1));
+        pageText = native ? Styled(tree, "", "Style_Body_Text") : Label(tree, "", 13, White());
+        var hint = native ? Styled(tree, "Scroll for more", "Style_Body_Text") : Label(tree, "Scroll for more", 11, new FLinearColor { R = 0.6f, G = 0.6f, B = 0.6f, A = 1 });
         stop = UGameplayStatics.SpawnObject(Unreal.ClassOf<UButton>(), tree) as UButton;
-        var stopLabel = Label(tree, "Stop", 13, White());
+        var stopLabel = native ? Styled(tree, "Stop", "Style_Button_Text") : Label(tree, "Stop", 13, White());
         if (title == null || pageText == null || hint == null || stop == null || stopLabel == null) return false;
+        hint.SetRenderOpacity(0.7f);
         var red = new FLinearColor { R = 0.45f, G = 0.1f, B = 0.1f, A = 0.95f };
-        stop.SetStyle(new FButtonStyle
-        {
-            Normal = Rounded(red, new FLinearColor { R = 1, G = 1, B = 1, A = 0.15f }, 1, -1),
-            Hovered = Rounded(new FLinearColor { R = 0.65f, G = 0.15f, B = 0.15f, A = 1 }, Gold(0.8f), 1, -1),
-            Pressed = Rounded(red, Gold(1), 1, -1),
-            NormalPadding = new FMargin { Left = 18, Top = 3, Right = 18, Bottom = 3 },
-            PressedPadding = new FMargin { Left = 18, Top = 4, Right = 18, Bottom = 2 },
-        });
+        if (!native || !GameButton(stop))
+            stop.SetStyle(new FButtonStyle
+            {
+                Normal = Rounded(red, new FLinearColor { R = 1, G = 1, B = 1, A = 0.15f }, 1, -1),
+                Hovered = Rounded(new FLinearColor { R = 0.65f, G = 0.15f, B = 0.15f, A = 1 }, Gold(0.8f), 1, -1),
+                Pressed = Rounded(red, Gold(1), 1, -1),
+                NormalPadding = new FMargin { Left = 18, Top = 3, Right = 18, Bottom = 3 },
+                PressedPadding = new FMargin { Left = 18, Top = 4, Right = 18, Bottom = 2 },
+            });
         stop.AddChild(stopLabel);
         stop.OnClicked += StopEmote;
         column.AddChildToVerticalBox(title)?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
@@ -217,7 +294,9 @@ public class EmoteWheel : ScreenWidget
         var stopSlot = column.AddChildToVerticalBox(stop);
         stopSlot?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
         stopSlot?.SetPadding(new FMargin { Top = 10 });
-        middle.SetBrush(Rounded(new FLinearColor { R = 0.03f, G = 0.03f, B = 0.04f, A = 0.85f }, Gold(0.7f), 2, Middle / 2));
+        // The game's ring has its own middle: the names go on it without a disc of their own.
+        if (native) middle.SetBrushColor(new FLinearColor());
+        else middle.SetBrush(Rounded(new FLinearColor { R = 0.03f, G = 0.03f, B = 0.04f, A = 0.85f }, Gold(0.7f), 2, Middle / 2));
         middle.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
         middle.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
         middle.AddChild(column);
@@ -225,6 +304,64 @@ public class EmoteWheel : ScreenWidget
 
         tree.RootWidget = box;
         return true;
+    }
+
+    UObject? Load(string path) =>
+        UKismetSystemLibrary.LoadAsset_Blocking(UKismetSystemLibrary.Conv_SoftObjPathToSoftObjRef(UKismetSystemLibrary.MakeSoftObjectPath(path)));
+
+    /// <summary>The game's wheel ring, as an image whose material can light a part; null if it isn't in the game.</summary>
+    UImage? Ring(UWidgetTree tree)
+    {
+        var material = ringMaterial;
+        if (material == null) return null;
+        var image = UGameplayStatics.SpawnObject(Unreal.ClassOf<UImage>(), tree) as UImage;
+        if (image == null) return null;
+        image.SetBrush(UWidgetBlueprintLibrary.MakeBrushFromMaterial(material, (int)Disc, (int)Disc));
+        ring = image.GetDynamicMaterial();
+        // The arrow at the edge pointing at the part lit.
+        ring?.SetScalarParameterValue("ArrowScale", 1);
+        return image;
+    }
+
+    /// <summary>Text in one of the game's text styles, or the wheel's own look if the style isn't in the game.</summary>
+    UTextBlock? Styled(UObject outer, string text, string style)
+    {
+        int at = styleNames.IndexOf(style);
+        if (at < 0) return Label(outer, text, 15, White());
+        var block = UGameplayStatics.SpawnObject(Unreal.ClassOf<UCommonTextBlock>(), outer) as UCommonTextBlock;
+        if (block == null) return null;
+        block.SetStyle(styleClasses[at]);
+        block.SetText(text);
+        block.SetJustification(ETextJustify.Center);
+        return block;
+    }
+
+    /// <summary>Gives a button the game's list button look (false if it isn't in the game).</summary>
+    bool GameButton(UButton button)
+    {
+        var normal = buttonNormal;
+        var hovered = buttonHovered;
+        var pressed = buttonPressed;
+        if (normal == null || hovered == null || pressed == null) return false;
+        // Roomy: the art's light rim is made for wide list rows, and with little space inside it reads as a second button.
+        var padding = new FMargin { Left = 36, Top = 12, Right = 36, Bottom = 12 };
+        button.SetStyle(new FButtonStyle
+        {
+            Normal = UWidgetBlueprintLibrary.MakeBrushFromMaterial(normal, 32, 32),
+            Hovered = UWidgetBlueprintLibrary.MakeBrushFromMaterial(hovered, 32, 32),
+            Pressed = UWidgetBlueprintLibrary.MakeBrushFromMaterial(pressed, 32, 32),
+            Disabled = UWidgetBlueprintLibrary.MakeBrushFromMaterial(normal, 32, 32),
+            NormalPadding = padding,
+            PressedPadding = padding,
+        });
+        return true;
+    }
+
+    static FButtonStyle Invisible()
+    {
+        // Not named "none": Unreal names ignore case, and a variable named None breaks the compiled code.
+        var blank = new FSlateBrush { DrawAs = ESlateBrushDrawType.NoDrawType };
+        return new FButtonStyle { Normal = blank, Hovered = blank, Pressed = blank, Disabled = blank, NormalPadding = new FMargin(), PressedPadding = new FMargin() };
     }
 
     /// <summary>Puts a widget of a size in the middle of the canvas.</summary>

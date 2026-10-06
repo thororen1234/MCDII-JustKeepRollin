@@ -410,10 +410,20 @@ public class EmotePlayer : UObject
             attachedSockets.Add(child.GetAttachSocketName());
             attachedPlaces.Add(child.GetRelativeTransform());
             var socket = child.GetAttachSocketName();
-            if (socket != FName.None && child.IsVisible() && rootBones.Contains(mesh.GetSocketBoneName(socket)))
+            bool hide = false;
+            if (socket != FName.None)
+            {
+                var bone = mesh.GetSocketBoneName(socket).ToString().ToLower();
+                if (rootBones.Contains(mesh.GetSocketBoneName(socket)) || bone.Contains("hand")) hide = true;
+            }
+            if (child is UChildActorComponent cac && !pinned.Contains(cac)) hide = true;
+
+            if (hide && child.IsVisible())
             {
                 hidden.Add(child);
                 child.SetVisibility(false, true);
+                if (child is UChildActorComponent hideCac && hideCac.ChildActor != null)
+                    hideCac.ChildActor.SetActorHiddenInGame(true);
             }
         }
         for (int i = 0; i < attached.Count; i++)
@@ -499,7 +509,14 @@ public class EmotePlayer : UObject
         attachedPlaces.Clear();
         pinned.Clear();
         foreach (var component in hidden)
-            if (component != null) component.SetVisibility(true, true);
+        {
+            if (component != null)
+            {
+                component.SetVisibility(true, true);
+                if (component is UChildActorComponent cac && cac.ChildActor != null)
+                    cac.ChildActor.SetActorHiddenInGame(false);
+            }
+        }
         hidden.Clear();
     }
 }

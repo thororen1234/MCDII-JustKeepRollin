@@ -10,7 +10,11 @@ namespace Emoticons;
 /// </summary>
 [ModSetting.Keybind(WheelKeySetting, "Emote Wheel Key", Default = DefaultWheelKey,
     Description = "Hold it to open the emote wheel, point at an emote and let go to play it. Tap it to keep the wheel open and click an emote.")]
-public class ModActor : AActor, IModSettings
+#pragma warning disable NR0001
+#pragma warning disable NR0001
+public class ModActor : AActor, ISettingsEvents
+#pragma warning restore NR0001
+#pragma warning restore NR0001
 {
     const string WheelKeySetting = "wheel_key";
     const string DefaultWheelKey = "B";
@@ -20,6 +24,7 @@ public class ModActor : AActor, IModSettings
     EmotePlayer? player;
     EmoteWheel? wheel;
     double openedAt;
+    bool started;
     // The wheel's keys (the setting's two), and the one that opened it: letting go of that one plays the emote.
     FKey wheelKey = new FKey { KeyName = DefaultWheelKey };
     FKey secondWheelKey = new FKey();
@@ -38,14 +43,17 @@ public class ModActor : AActor, IModSettings
         secondWheelKey = new FKey();
     }
 
+    public void OnSettingChanged(string id, string value) { }
+    public void OnButtonPressed(string id) { }
+
     protected override void ReceiveBeginPlay()
     {
         Log.Write($"Emoticons loaded in {World.LevelName(this)}");
-        player = EmotePlayer.Create(this);
     }
 
     public override void ReceiveTick(float deltaSeconds)
     {
+        if (!started) { started = true; player = EmotePlayer.Create(this); }
         player?.Update();
         var controller = World.PlayerController(this);
         if (controller == null) return;
@@ -91,4 +99,19 @@ public class ModActor : AActor, IModSettings
     }
 
     public void WheelClosed() => wheel = null;
+
+    /// <summary>
+    /// Holds the wheel being made, before it's built: building it loads the game's assets, which can let the garbage
+    /// collector run, and it would destroy a wheel held only by the code making it.
+    /// </summary>
+        public void Holding(EmoteWheel made) => wheel = made;
+}
+
+[Asset("/Game/Mods/BlueprintLoader/BPI_ModSettings")]
+public interface ISettingsEvents
+{
+    void OnButtonPressed(string Id);
+    void OnKeybindChanged(string Id, FKey Key, FKey SecondaryKey);
+    void OnSettingChanged(string Id, string Value);
+    void OnSettingsReset();
 }
