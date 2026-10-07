@@ -91,6 +91,8 @@ public class SkinSwapper : UObject
     List<AActor> announced = new();
     // Per menu character, its body's material when WatchPreviews last saw it dressed.
     Dictionary<AActor, UMaterialInterface> previewMaterials = new();
+    // While the game's skin is worn: per copy of the character, the skin its second layer was built from.
+    Dictionary<AActor, UTexture> layeredSkins = new();
     List<UMaterialInstanceDynamic> instances = new();
     List<FName> parameters = new();
     List<UTexture?> oldSkins = new();
@@ -264,12 +266,14 @@ public class SkinSwapper : UObject
     }
 
     /// <summary>
-    /// Puts the skin on the menus' copies of the character (the inventory's, the lobby's, the main menu's) the frame they
-    /// show or the game puts its own skin back on them, rather than on the next check. Call every frame.
+    /// Puts the skin and its second layer on the copies of the character (the menus': the inventory's, the lobby's, the
+    /// main menu's; and the cutscenes', which are the inventory's kind too) the frame they show or the game puts its own
+    /// skin back on them, rather than on the next check. Call every frame.
     /// </summary>
     public void WatchPreviews()
     {
-        if (owner == null || Skin == 0 || worn == null) return;
+        if (owner == null) return;
+        if (Skin == 0 ? layerMode == SkinLayers.Off : worn == null) return;
         WatchPreviews(Unreal.ClassOf<UE.InventorySystem.ACharacterPreviewActor>());
         WatchPreviews(Unreal.ClassOf<UE.MainMenu.APartyPreviewActor>());
     }
@@ -282,10 +286,25 @@ public class SkinSwapper : UObject
             // Nothing changed since it was last looked at: the usual case, checked cheaply.
             var material = body.GetMaterial(0);
             if (material == null || (previewMaterials.ContainsKey(actor) && previewMaterials[actor] == material)) continue;
+            if (Skin == 0)
+            {
+                // The game's skin: just its second layer, from the skin this copy wears (a cutscene's copy gets its skin
+                // after it shows, and the main menu's party has other skins).
+                previewMaterials[actor] = material;
+                if (layers == null || UKismetSystemLibrary.GetPathName(body.GetSkinnedAsset()) != PlayerBody) continue;
+                var skin = SkinOf(actor);
+                if (skin == null || (layeredSkins.ContainsKey(actor) && layeredSkins[actor] == skin)) continue;
+                layers.ClearOn(actor);
+                Layers(actor, skin);
+                layeredSkins[actor] = skin;
+                continue;
+            }
             if (material is UMaterialInstanceDynamic own && instances.Contains(own))
             {
                 int at = instances.IndexOf(own);
                 if (own.K2_GetTextureParameterValue(parameters[at]) != worn) own.SetTextureParameterValue(parameters[at], worn);
+                // A copy wearing the character's own material (a cutscene's) still needs its second layer and face.
+                if (!dressed.Contains(actor)) Dress(actor);
             }
             else if (UKismetSystemLibrary.GetPathName(body.GetSkinnedAsset()) == PlayerBody)
             {
@@ -424,6 +443,7 @@ public class SkinSwapper : UObject
                 components[i].SetMaterial(slots[i], originals[i]);
         dressed.Clear();
         previewMaterials.Clear();
+        layeredSkins.Clear();
         instances.Clear();
         parameters.Clear();
         oldSkins.Clear();
@@ -718,7 +738,15 @@ public class SkinSwapper : UObject
     {
         var player = owner != null ? World.Player(owner) : null;
         if (player == null) return gameSkin;
-        foreach (var component in player.K2_GetComponentsByClass(Unreal.ClassOf<USkinnedMeshComponent>()))
+        var skin = SkinOf(player);
+        if (skin != null) gameSkin = skin;
+        return gameSkin;
+    }
+
+    /// <summary>The game's skin an actor with the player's body wears (the one a custom skin replaced), or null.</summary>
+    UTexture? SkinOf(AActor actor)
+    {
+        foreach (var component in actor.K2_GetComponentsByClass(Unreal.ClassOf<USkinnedMeshComponent>()))
         {
             if (component is not USkinnedMeshComponent mesh || UKismetSystemLibrary.GetPathName(mesh.GetSkinnedAsset()) != PlayerBody) continue;
             for (int i = 0; i < mesh.GetNumMaterials(); i++)
@@ -746,11 +774,10 @@ public class SkinSwapper : UObject
                     if (skin != null) materialSkins[material] = skin;
                 }
                 if (skin == null || ours.Contains(skin)) continue;
-                gameSkin = skin;
                 return skin;
             }
         }
-        return gameSkin;
+        return null;
     }
 
     /// <summary>

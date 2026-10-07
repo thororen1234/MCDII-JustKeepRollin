@@ -259,6 +259,20 @@ public class SkinLayers : UObject
         parts.Clear();
     }
 
+    /// <summary>Removes the layers built on one actor (and forgets parts already gone with their actors).</summary>
+    public void ClearOn(AActor actor)
+    {
+        var others = new List<UProceduralMeshComponent>();
+        foreach (var part in parts)
+        {
+            if (part == null || !UKismetSystemLibrary.IsValid(part)) continue;
+            if (part.GetOwner() == actor) part.K2_DestroyComponent(part);
+            else others.Add(part);
+        }
+        parts.Clear();
+        foreach (var part in others) parts.Add(part);
+    }
+
     /// <summary>The bone's transform in the body's space, in the reference pose.</summary>
     static FTransform RefPose(USkinnedMeshComponent body, FName bone)
     {
