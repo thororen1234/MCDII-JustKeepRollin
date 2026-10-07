@@ -15,6 +15,8 @@ namespace CustomSkins;
 /// see them: everyone else sees the skin picked in the game's own menu, so that one is the fallback. The keys are
 /// settings in BetterBlueprintLoader's Mods tab.
 /// </summary>
+[ModSetting.Select(LayerSetting, "Second Layer", "Off", "Flat", "3D", Default = SkinLayers.Off,
+    Description = "The skin's jacket, sleeves and pants layers, like Java Edition: flat, or as 3D blocks (the hat too). Uses the Java skin layout.")]
 [ModSetting.Heading("Keys")]
 [ModSetting.Keybind(NextSetting, "Next Skin", Default = DefaultNextKey,
     Description = "Wears the next skin in the Skins folder; after the last one, the game's skin again.")]
@@ -30,6 +32,7 @@ public class ModActor : AActor, ISettingsEvents
     const string ReloadSetting = "reload_key";
     const string ExportSetting = "export_key";
     const string InfoSetting = "info_key";
+    const string LayerSetting = "second_layer";
     const string DefaultNextKey = "F6";
     const string DefaultReloadKey = "F7";
     const string DefaultExportKey = "F8";
@@ -48,6 +51,8 @@ public class ModActor : AActor, ISettingsEvents
     const float RowBottom = 196;
 
     SkinSwapper? skins;
+    // The Second Layer setting: kept here, because it arrives right after the actor spawns, before skins exists.
+    int layerMode = SkinLayers.Off;
     // When Check and WatchMenu run next (real time): from the tick, which keeps running while menus pause the game.
     // Not PausableTimers: calling this actor's methods from one crashes the game.
     double nextCheck;
@@ -115,9 +120,16 @@ public class ModActor : AActor, ISettingsEvents
         reloadKey2 = new FKey();
         exportKey2 = new FKey();
         infoKey2 = new FKey();
+        layerMode = SkinLayers.Off;
+        skins?.SetLayers(layerMode);
     }
 
-    public void OnSettingChanged(string id, string value) { }
+    public void OnSettingChanged(string id, string value)
+    {
+        if (id != LayerSetting) return;
+        layerMode = ModSettings.ToInt(value);
+        skins?.SetLayers(layerMode);
+    }
     public void OnButtonPressed(string id) { }
 
     static bool Pressed(APlayerController controller, FKey key, FKey secondary) =>
@@ -146,6 +158,7 @@ public class ModActor : AActor, ISettingsEvents
             }
             started = true;
             skins = SkinSwapper.Create(this);
+            skins?.SetLayers(layerMode);
         }
         skins?.UpdateFace();
         var now = World.RealTime(this);

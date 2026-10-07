@@ -61,6 +61,13 @@ public class SkinSwapper : UObject
     // The eyes and mouth that move with the face, for skins with them (see FaceParts), and which skins have them.
     FaceParts? face;
     Dictionary<int, bool> movingFaces = new();
+    // The second layer (see SkinLayers): Off, Flat or 3D, the game's skin it was built from and the character it's on
+    // (while the game's skin is worn), and render targets of the game's skins to read their pixels from.
+    SkinLayers? layers;
+    int layerMode;
+    UTexture? layersFrom;
+    ACharacter? layersOn;
+    Dictionary<UTexture, UTextureRenderTarget2D> readable = new();
     // The game's skin as found on the character, put back on copies that only ever had a custom one.
     UTexture? gameSkin;
     UTexture? gameMres;
@@ -100,6 +107,7 @@ public class SkinSwapper : UObject
         if (swapper == null) return null;
         swapper.owner = owner;
         swapper.face = FaceParts.Create(swapper);
+        swapper.layers = SkinLayers.Create(swapper);
         swapper.settings = UGameplayStatics.LoadGameFromSlot(SettingsSlot, 0) as CustomSkinsSettings;
         if (swapper.settings == null)
             swapper.settings = UGameplayStatics.CreateSaveGameObject(Unreal.ClassOf<CustomSkinsSettings>()) as CustomSkinsSettings;
@@ -132,6 +140,14 @@ public class SkinSwapper : UObject
         Apply();
     }
 
+    /// <summary>Shows the skin's second layer: <see cref="SkinLayers.Off"/>, Flat or Blocks (3D).</summary>
+    public void SetLayers(int mode)
+    {
+        if (mode == layerMode) return;
+        layerMode = mode;
+        Apply();
+    }
+
     /// <summary>Reads the PNG again, to see changes made to it while playing.</summary>
     public void Reload()
     {
@@ -144,8 +160,14 @@ public class SkinSwapper : UObject
     /// <summary>Call regularly: puts the skin back on a new character, or after the game put its own back.</summary>
     public void Check()
     {
-        if (Skin == 0 || owner == null) return;
+        if (owner == null) return;
         var current = World.Player(owner) as ACharacter;
+        if (Skin == 0)
+        {
+            // The game's skin's layers, on a new character or after the game's skin changed.
+            if (layerMode != SkinLayers.Off && current != null && (current != layersOn || GameSkin() != layersFrom)) Apply();
+            return;
+        }
         if (current != null && current == reported) return;
         if (current != character || worn == null || (current != null && instances.Count == 0))
         {
@@ -180,7 +202,12 @@ public class SkinSwapper : UObject
     {
         Restore();
         reported = null;
-        if (Skin == 0 || owner == null) return;
+        if (owner == null) return;
+        if (Skin == 0)
+        {
+            GameSkinLayers();
+            return;
+        }
         character = World.Player(owner) as ACharacter;
         worn = Load(Skin);
         if (worn == null)
@@ -262,12 +289,49 @@ public class SkinSwapper : UObject
                 added.Add(instance);
             }
         }
+        if (worn != null) Layers(actor, worn);
         // Eyes and mouth that move with the face, on the body, unless another mod gives it its own.
         if (face == null || !movingFaces.ContainsKey(Skin) || !movingFaces[Skin] || FaceParts.HasOthers(actor)) return;
         if (actor.GetComponentByClass(Unreal.ClassOf<USkeletalMeshComponent>()) is not USkeletalMeshComponent body) return;
         if (UKismetSystemLibrary.GetPathName(body.GetSkinnedAsset()) != PlayerBody) return;
         var skin = body.GetMaterial(0);
         if (skin != null) face.Build(actor, body, skin);
+    }
+
+    /// <summary>Builds the second layer of a skin on an actor's body, in the body's skin material, if it's on.</summary>
+    void Layers(AActor actor, UTexture skin)
+    {
+        if (layers == null || layerMode == SkinLayers.Off) return;
+        if (actor.GetComponentByClass(Unreal.ClassOf<USkeletalMeshComponent>()) is not USkeletalMeshComponent body) return;
+        if (UKismetSystemLibrary.GetPathName(body.GetSkinnedAsset()) != PlayerBody) return;
+        var material = body.GetMaterial(0);
+        var pixels = Readable(skin);
+        if (material != null && pixels != null) layers.Build(owner!, actor, body, material, pixels, layerMode);
+    }
+
+    /// <summary>The game's skin's second layer on the character (only the hat shows unless it has more).</summary>
+    void GameSkinLayers()
+    {
+        if (layerMode == SkinLayers.Off) return;
+        var player = World.Player(owner!) as ACharacter;
+        var skin = GameSkin();
+        if (player == null || skin == null) return;
+        layersOn = player;
+        layersFrom = skin;
+        Layers(player, skin);
+    }
+
+    /// <summary>A render target of a skin, to read its pixels from: the skin itself if it is one.</summary>
+    UTextureRenderTarget2D? Readable(UTexture skin)
+    {
+        if (skin is UTextureRenderTarget2D target) return target;
+        if (readable.ContainsKey(skin)) return readable[skin];
+        if (skin is not UTexture2D texture) return null;
+        var copy = Copy(texture, texture.Blueprint_GetSizeX(), texture.Blueprint_GetSizeY(), false);
+        if (copy == null) return null;
+        readable[skin] = copy;
+        ours.Add(copy);
+        return copy;
     }
 
     /// <summary>Puts the skin on a material if it's a skin material.</summary>
@@ -296,6 +360,9 @@ public class SkinSwapper : UObject
     void Restore()
     {
         face?.Clear();
+        layers?.Clear();
+        layersOn = null;
+        layersFrom = null;
         for (int i = 0; i < instances.Count; i++)
         {
             if (!UKismetSystemLibrary.IsValid(instances[i]) || instances[i].K2_GetTextureParameterValue(parameters[i]) != worn) continue;
@@ -372,8 +439,12 @@ public class SkinSwapper : UObject
         return file;
     }
 
-    /// <summary>Moves the eyes and mouth with the face. Call every frame.</summary>
-    public void UpdateFace() => face?.Update();
+    /// <summary>Moves the eyes and mouth with the face, and the second layer with the body. Call every frame.</summary>
+    public void UpdateFace()
+    {
+        face?.Update();
+        layers?.Update();
+    }
 
     /// <summary>Whether a skin colours any of the moving eyes' and mouth's shapes: their pupils, and the mouths.</summary>
     bool MovingFace(UTextureRenderTarget2D target, float pixel) =>
