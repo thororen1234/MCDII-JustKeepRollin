@@ -1,6 +1,6 @@
 <Project Sdk="NeoRuneExtended.Sdk/0.4.2">
   <PropertyGroup>
-    <Version>1.0.3</Version>
+    <Version>1.0.4</Version>
     <NeoRuneModTitle>Just Keep Rolling</NeoRuneModTitle>
     <NeoRuneModDescription>Roll in mid-air.</NeoRuneModDescription>
   </PropertyGroup>
