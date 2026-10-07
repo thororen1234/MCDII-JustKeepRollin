@@ -33,6 +33,10 @@ public class EmoteWheel : ScreenWidget
     const float LabelWidth = 140;
     // How far the mouse must be from the middle (in UI units) to point at an emote.
     const float DeadZone = Middle / 2;
+    // How far a controller's stick must be pushed (0 to 1) to point at an emote.
+    const float StickDeadZone = 0.5f;
+    const string MouseHint = "Scroll for more";
+    const string ControllerHint = "D-pad left/right for more\nD-pad down to stop";
 
     ModActor? mod;
     int page;
@@ -44,6 +48,8 @@ public class EmoteWheel : ScreenWidget
     List<UCanvasPanelSlot> slots = new();
     UTextBlock? title;
     UTextBlock? pageText;
+    UTextBlock? hint;
+    bool controllerHint;
     UButton? stop;
     // The game's ring: its material draws the panel and the marks the names sit on.
     UMaterialInstanceDynamic? ring;
@@ -135,20 +141,45 @@ public class EmoteWheel : ScreenWidget
         var dx = mouse.X - size.X / scale / 2;
         var dy = mouse.Y - size.Y / scale / 2;
 
-        int slot = -1;
+        Hover(dx * dx + dy * dy > DeadZone * DeadZone ? SlotAt(dx, dy) : -1);
+    }
+
+    /// <summary>
+    /// Highlights the emote a controller's stick points at (right and up positive). Let go, the stick keeps the emote it
+    /// last pointed at, so letting go of the wheel's key after it still plays that one.
+    /// </summary>
+    public void Point(float x, float y)
+    {
+        if (x * x + y * y < StickDeadZone * StickDeadZone) return;
+        Hover(SlotAt(x, -y));
+    }
+
+    /// <summary>The slot in a direction from the middle (screen axes: y down), or -1 past the emotes on this page.</summary>
+    int SlotAt(double dx, double dy)
+    {
         int count = OnPage();
-        if (dx * dx + dy * dy > DeadZone * DeadZone && count > 0)
-        {
-            // Slot 0 is at the top, then clockwise; each slot's slice is centred on it.
-            var angle = UKismetMathLibrary.DegAtan2(dy, dx) + 90 + 180.0 / PerPage;
-            slot = UKismetMathLibrary.Percent_IntInt(UKismetMathLibrary.FFloor(angle / (360.0 / PerPage)) + PerPage, PerPage);
-            if (slot >= count) slot = -1;
-        }
+        if (count <= 0) return -1;
+        // Slot 0 is at the top, then clockwise; each slot's slice is centred on it.
+        var angle = UKismetMathLibrary.DegAtan2(dy, dx) + 90 + 180.0 / PerPage;
+        int slot = UKismetMathLibrary.Percent_IntInt(UKismetMathLibrary.FFloor(angle / (360.0 / PerPage)) + PerPage, PerPage);
+        return slot < count ? slot : -1;
+    }
+
+    void Hover(int slot)
+    {
         var next = slot >= 0 ? page * PerPage + slot : -1;
         if (next == hovered) return;
         hovered = next;
         Light(slot);
         title?.SetText(hovered >= 0 ? EmoteData.Title(hovered) : "Emotes");
+    }
+
+    /// <summary>Shows how to turn the page and stop with the mouse, or with a controller.</summary>
+    public void ShowHints(bool controller)
+    {
+        if (controller == controllerHint) return;
+        controllerHint = controller;
+        hint?.SetText(controller ? ControllerHint : MouseHint);
     }
 
     void Light(int slot)
@@ -271,7 +302,7 @@ public class EmoteWheel : ScreenWidget
 
         title = native ? Styled(tree, "Emotes", "Style_SectionHeader1_Text") : Label(tree, "Emotes", 20, Gold(1));
         pageText = native ? Styled(tree, "", "Style_Body_Text") : Label(tree, "", 13, White());
-        var hint = native ? Styled(tree, "Scroll for more", "Style_Body_Text") : Label(tree, "Scroll for more", 11, new FLinearColor { R = 0.6f, G = 0.6f, B = 0.6f, A = 1 });
+        hint = native ? Styled(tree, MouseHint, "Style_Body_Text") : Label(tree, MouseHint, 11, new FLinearColor { R = 0.6f, G = 0.6f, B = 0.6f, A = 1 });
         stop = UGameplayStatics.SpawnObject(Unreal.ClassOf<UButton>(), tree) as UButton;
         var stopLabel = native ? Styled(tree, "Stop", "Style_Button_Text") : Label(tree, "Stop", 13, White());
         if (title == null || pageText == null || hint == null || stop == null || stopLabel == null) return false;

@@ -58,15 +58,28 @@ public class ModActor : AActor, ISettingsEvents
         if (first || controller.WasInputKeyJustPressed(secondWheelKey))
         {
             heldKey = first ? wheelKey : secondWheelKey;
-            if (wheel != null) wheel.Close();
+            // Pressed again while the wheel is open: plays the emote pointed at, or else closes the wheel.
+            if (wheel != null && wheel.Hovered >= 0) PlayEmote(wheel.Hovered);
+            else if (wheel != null) wheel.Close();
             else OpenWheel();
             return;
         }
         if (wheel == null) return;
 
-        wheel.UpdateHover();
-        if (controller.WasInputKeyJustPressed(new FKey { KeyName = "MouseScrollUp" })) wheel.Turn(-1);
-        if (controller.WasInputKeyJustPressed(new FKey { KeyName = "MouseScrollDown" })) wheel.Turn(1);
+        // A controller points with either stick (the one pushed further), turns pages with the D-pad and stops with its
+        // down: its face buttons and bumpers do things in the game while the wheel is open.
+        bool pad = UsingController();
+        wheel.ShowHints(pad);
+        if (pad) PointWithStick(controller);
+        else wheel.UpdateHover();
+        if (controller.WasInputKeyJustPressed(new FKey { KeyName = "MouseScrollUp" }) || (pad && controller.WasInputKeyJustPressed(new FKey { KeyName = "Gamepad_DPad_Left" }))) wheel.Turn(-1);
+        if (controller.WasInputKeyJustPressed(new FKey { KeyName = "MouseScrollDown" }) || (pad && controller.WasInputKeyJustPressed(new FKey { KeyName = "Gamepad_DPad_Right" }))) wheel.Turn(1);
+        if (pad && controller.WasInputKeyJustPressed(new FKey { KeyName = "Gamepad_DPad_Down" }))
+        {
+            StopEmote();
+            wheel.Close();
+            return;
+        }
         if (controller.WasInputKeyJustReleased(heldKey))
         {
             if (wheel.Hovered >= 0) PlayEmote(wheel.Hovered);
@@ -77,6 +90,23 @@ public class ModActor : AActor, ISettingsEvents
             }
             else if (World.RealTime(this) - openedAt > TapTime) wheel.Close();
         }
+    }
+
+    void PointWithStick(APlayerController controller)
+    {
+        var rightX = controller.GetInputAnalogKeyState(new FKey { KeyName = "Gamepad_RightX" });
+        var rightY = controller.GetInputAnalogKeyState(new FKey { KeyName = "Gamepad_RightY" });
+        var leftX = controller.GetInputAnalogKeyState(new FKey { KeyName = "Gamepad_LeftX" });
+        var leftY = controller.GetInputAnalogKeyState(new FKey { KeyName = "Gamepad_LeftY" });
+        if (rightX * rightX + rightY * rightY >= leftX * leftX + leftY * leftY) wheel?.Point(rightX, rightY);
+        else wheel?.Point(leftX, leftY);
+    }
+
+    /// <summary>Whether the player is using a controller now (the game shows controller buttons).</summary>
+    bool UsingController()
+    {
+        var input = USubsystemBlueprintLibrary.GetLocalPlayerSubSystemFromPlayerController(World.PlayerController(this), Unreal.ClassOf<UE.CommonInput.UCommonInputSubsystem>()) as UE.CommonInput.UCommonInputSubsystem;
+        return input != null && input.GetCurrentInputType() == UE.CommonInput.ECommonInputType.Gamepad;
     }
 
     public void PlayEmote(int index)
