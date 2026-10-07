@@ -10,33 +10,56 @@ namespace DragSalvage;
 
 /// <summary>
 /// In the salvage screen, hold the mouse on an item and drag across others to select them all, instead of clicking
-/// each one. On a controller, hold A on an item and move across others.
+/// each one. On a controller, hold A on an item and move off it: every item moved onto is selected until A is pressed
+/// again.
 /// </summary>
 public class ModActor : AActor
 {
-    // An item the mod clicks can get the focus back the same way A does: that isn't A.
-    const double ClickEcho = 0.15;
-
     WidgetWatcher? panels;
     WidgetWatcher? slotWatcher;
     WidgetWatcher? entryWatcher;
     UAS_SalvagePanel? panel;
     bool panelShown;
     // Item buttons: equipment slots and the inventory grid's entries.
-    List<UCommonButtonBase> slots = new();
+    readonly List<UCommonButtonBase> slots = [];
     // Items the current drag has been over, and the one to click next.
-    List<UCommonButtonBase> dragged = new();
+    readonly List<UCommonButtonBase> dragged = [];
     UCommonButtonBase? pending;
     // Controller. The game handles A itself, out of the mod's sight: the only sign of it is that the item with the
-    // focus loses it and gets it back at once, both when A goes down and when it comes up.
+    // focus loses it and gets it back at once ("bounces"). That happens when A goes down, and when it comes up only
+    // if that's on the item it went down on: letting go anywhere else leaves no trace. (The player controller never
+    // sees A while a menu is open, and the items never say they're pressed.) So a drag starts when the focus moves
+    // off the item A went down on before it comes up, and runs until A is pressed again.
     UCommonButtonBase? focused;
     UCommonButtonBase? lostBy;
     int lostAt = -1;
     int frame;
-    bool aDown;
-    List<UCommonButtonBase> padDragged = new();
+    // The item A went down on, and whether the focus has moved off it since (the drag is on).
+    UCommonButtonBase? padStart;
+    bool padDragging;
+    readonly List<UCommonButtonBase> padDragged = [];
+    // The item A was pressed on to stop a drag: its next bounce is A coming up, unless the focus moves first.
+    UCommonButtonBase? padStopped;
+    // The item the mod clicked, and when: the click bounces its focus too, but that isn't A.
     UCommonButtonBase? clicked;
-    double clickedAt = -1000;
+    int clickedAt = -1;
+    // What the controller drag saw, saved from the tick (saving from the game's input callbacks isn't safe).
+    readonly List<string> notes = [];
+    double savedAt;
+
+    void Note(string line) => notes.Add($"{(int)(World.RealTime(this) * 1000)}ms {line}");
+
+    static string Name(UWidget? widget) => widget != null ? UKismetSystemLibrary.GetObjectName(widget) : "nothing";
+
+    void SaveNotes()
+    {
+        if (notes.Count == 0) return;
+        Log.WriteAll(notes);
+        notes.Clear();
+        savedAt = World.RealTime(this);
+    }
+
+    protected override void ReceiveEndPlay(EEndPlayReason reason) => SaveNotes();
 
     protected override void ReceiveBeginPlay()
     {
@@ -77,26 +100,78 @@ public class ModActor : AActor
         focused = slot;
         lostBy = null;
         if (!panelShown || slot == null) return;
-        if (bounced)
+        // A mouse click bounces the focus the same way A does, and hovering moves it: only a controller counts.
+        if (!UsingController())
         {
-            if (slot == clicked && World.RealTime(this) - clickedAt < ClickEcho) return;
-            // A went down or came up on this item. Going down, the game marks it itself.
-            aDown = !aDown;
-            padDragged.Clear();
-            if (aDown) padDragged.Add(slot);
+            ResetPad();
             return;
         }
-        // Moved onto another item with A held.
-        if (!aDown || padDragged.Contains(slot)) return;
+        if (bounced)
+        {
+            if (slot == clicked && clickedAt == frame)
+            {
+                Note($"bounce on {Name(slot)} from the mod's click, ignored");
+                return;
+            }
+            OnPadBounce(slot);
+            return;
+        }
+        padStopped = null;
+        if (padStart == null) return;
+        // Moved off the item before A came up: A is held, and the drag is on.
+        if (!padDragging) Note($"drag started from {Name(padStart)}");
+        padDragging = true;
+        Note($"focus moved to {Name(slot)}");
+        if (padDragged.Contains(slot)) return;
         padDragged.Add(slot);
         // Clicked on the next tick, once the game has seen the item focused.
         pending = slot;
     }
 
+    /// <summary>A went down or came up on the item with the focus. Going down, the game toggles the item itself.</summary>
+    void OnPadBounce(UCommonButtonBase slot)
+    {
+        if (slot == padStopped)
+        {
+            Note($"A up on {Name(slot)} after stopping");
+            padStopped = null;
+            return;
+        }
+        if (padStart == null)
+        {
+            Note($"A down on {Name(slot)}");
+            padStart = slot;
+            padDragged.Add(slot);
+            return;
+        }
+        // A came up where it went down: a plain press, or the end of a drag that came back to its first item.
+        if (!padDragging || slot == padStart)
+        {
+            Note($"A up on {Name(slot)}{(padDragging ? ", drag ended" : "")}");
+            ResetPad();
+            return;
+        }
+        // A pressed again during a drag stops it. The drag already toggled this item, so the game's toggle is undone.
+        Note($"A down on {Name(slot)}: drag stopped");
+        var undo = padDragged.Contains(slot);
+        ResetPad();
+        padStopped = slot;
+        if (undo) pending = slot;
+    }
+
+    /// <summary>Whether the player is using a controller now (the game shows controller buttons).</summary>
+    bool UsingController()
+    {
+        var input = USubsystemBlueprintLibrary.GetLocalPlayerSubSystemFromPlayerController(World.PlayerController(this), Unreal.ClassOf<UE.CommonInput.UCommonInputSubsystem>()) as UE.CommonInput.UCommonInputSubsystem;
+        return input != null && input.GetCurrentInputType() == UE.CommonInput.ECommonInputType.Gamepad;
+    }
+
     void ResetPad()
     {
-        aDown = false;
+        padStart = null;
+        padDragging = false;
         padDragged.Clear();
+        padStopped = null;
     }
 
     public bool Active => panelShown;
@@ -124,6 +199,7 @@ public class ModActor : AActor
         if (shown != panelShown)
         {
             panelShown = shown;
+            Note($"salvage {(shown ? "shown" : "hidden")}, {slots.Count} items, focus on {Name(focused)}");
             ResetPad();
             for (int i = slots.Count - 1; i >= 0; i--)
             {
@@ -133,13 +209,19 @@ public class ModActor : AActor
         }
         if (focused != null && !UKismetSystemLibrary.IsValid(focused)) focused = null;
         // The focus went somewhere other than an item (another tab, a button, a popup): A can't be tracked there.
-        if (focused == null) ResetPad();
+        if (focused == null)
+        {
+            if (padStart != null) Note("focus left the items: drag ended");
+            ResetPad();
+        }
+        if (World.RealTime(this) - savedAt >= 2) SaveNotes();
         if (pending == null) return;
         var slot = pending;
         pending = null;
         if (!shown || !UKismetSystemLibrary.IsValid(slot)) return;
+        Note($"drag clicks {Name(slot)}");
         clicked = slot;
-        clickedAt = World.RealTime(this);
+        clickedAt = frame;
         slot.HandleButtonClicked();
     }
 }
@@ -157,8 +239,7 @@ public class DragCatcher : UUserWidget
     {
         var grid = FindGrid(slot.WidgetTree?.RootWidget);
         if (grid == null) return;
-        var catcher = UWidgetBlueprintLibrary.Create(mod, Unreal.ClassOf<DragCatcher>(), World.PlayerController(mod)) as DragCatcher;
-        if (catcher == null || !catcher.Build()) return;
+        if (UWidgetBlueprintLibrary.Create(mod, Unreal.ClassOf<DragCatcher>(), World.PlayerController(mod)) is not DragCatcher catcher || !catcher.Build()) return;
         catcher.mod = mod;
         catcher.slot = slot;
         // In the grid's first cell, spanning it all, above the item's own widgets.
@@ -197,8 +278,7 @@ public class DragCatcher : UUserWidget
             WidgetTree = tree;
         }
         // A see-through border: it takes part in hit testing, so mouse events reach this widget.
-        var border = UGameplayStatics.SpawnObject(Unreal.ClassOf<UBorder>(), tree) as UBorder;
-        if (tree == null || border == null) return false;
+        if (UGameplayStatics.SpawnObject(Unreal.ClassOf<UBorder>(), tree) is not UBorder border || tree == null) return false;
         border.SetBrushColor(new UE.CoreUObject.FLinearColor());
         tree.RootWidget = border;
         return true;
