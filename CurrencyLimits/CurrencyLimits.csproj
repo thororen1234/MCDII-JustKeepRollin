@@ -1,7 +1,7 @@
 <Project Sdk="NeoRuneExtended.Sdk/0.4.2">
   <PropertyGroup>
     <Version>1.0.1</Version>
-    <NeoRuneModTitle>Currency Cap Adjuster</NeoRuneModTitle>
+    <NeoRuneModTitle>Currency Limits</NeoRuneModTitle>
     <NeoRuneModDescription>Set how many Emeralds and Echo Shards you can carry, with a slider for each.</NeoRuneModDescription>
   </PropertyGroup>
 </Project>

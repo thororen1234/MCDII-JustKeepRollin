@@ -4,10 +4,10 @@ using UE.GameplayAbilities;
 using UE.InputCore;
 using UE.SpicewoodGAS;
 
-namespace CurrencyCapAdjuster;
+namespace CurrencyLimits;
 
 /// <summary>
-/// Currency Cap Adjuster: raises how many Emeralds and Echo Shards you can carry, to the amounts set with the sliders in
+/// Currency Limits: raises how many Emeralds and Echo Shards you can carry, to the amounts set with the sliders in
 /// BetterBlueprintLoader's Mods tab.
 /// </summary>
 [ModSetting.Text("How much of each currency you can carry. All the way left is the game's own cap. "

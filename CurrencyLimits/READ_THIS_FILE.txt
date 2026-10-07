@@ -1,9 +1,9 @@
-CURRENCY CAP ADJUSTER
-=====================
+CURRENCY LIMITS
+==============
 
 Set how many Emeralds and Echo Shards you can carry!
 
-Open the game's Settings, Mods, Currency Cap Adjuster, and move the sliders:
+Open the game's Settings, Mods, Currency Limits, and move the sliders:
     Emerald Cap      99,000 (the game's cap) up to 16,777,000
     Echo Shard Cap      100 (the game's cap) up to 16,777,200
 
@@ -30,11 +30,11 @@ INSTALL
 
 3. Create a folder called ~mods inside the Paks folder if there is not one already.
 
-4. Extract this zip into ~mods, so the files end up in: Paks\~mods\CurrencyCapAdjuster
+4. Extract this zip into ~mods, so the files end up in: Paks\~mods\CurrencyLimits
 
 5. Remove any other mod that changes the currency caps (like CurrencyCapMax), or the two will fight over them.
 
 UNINSTALL
 ---------
 
-Delete the CurrencyCapAdjuster folder from ~mods.
+Delete the CurrencyLimits folder from ~mods.

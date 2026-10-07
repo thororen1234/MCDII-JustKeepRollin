@@ -1,0 +1,7 @@
+<Project Sdk="NeoRuneExtended.Sdk/0.4.2">
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <NeoRuneModTitle>Stats Overlay</NeoRuneModTitle>
+    <NeoRuneModDescription>Your Emeralds, Echo Shards, Enchantment Points, the Soul Storm and more next to the hotbar, each one turned on or off in the settings.</NeoRuneModDescription>
+  </PropertyGroup>
+</Project>

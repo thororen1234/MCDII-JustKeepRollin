@@ -1,10 +1,11 @@
 <Solution>
   <Project Path="BetterBlueprintLoader/BetterBlueprintLoader.csproj" />
-  <Project Path="CurrencyCapAdjuster/CurrencyCapAdjuster.csproj" />
+  <Project Path="CurrencyLimits/CurrencyLimits.csproj" />
   <Project Path="CustomCapes/CustomCapes.csproj" />
   <Project Path="CustomSkins/CustomSkins.csproj" />
   <Project Path="DragSalvage/DragSalvage.csproj" />
   <Project Path="Emoticons/Emoticons.csproj" />
   <Project Path="JustKeepRolling/JustKeepRolling.csproj" />
+  <Project Path="StatsOverlay/StatsOverlay.csproj" />
   <Project Path="tools/BetterBlueprintLoaderHook/BetterBlueprintLoaderHook.csproj" />
 </Solution>

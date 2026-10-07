@@ -1,0 +1,43 @@
+STATS OVERLAY
+=============
+
+See your Emeralds, Echo Shards, Enchantment Points and the Soul Storm going on at all times, just right of the hotbar!
+
+It uses the game's own icons and font, updates live, and fades in and out with the hotbar, so it's hidden in menus and
+on loading screens.
+
+Displays:
+    Emeralds             on
+    Echo Shards          on
+    Enchantment Points   on
+    Soul Storm           on   where a Soul Storm is going on and how long it has left; hidden while there's none
+    Experience           off  XP towards the next level
+    Health               off  your health as numbers
+
+To turn displays on or off, show them one under the other, or make them bigger or smaller, open the game's Settings,
+Mods, Stats Overlay.
+
+REQUIREMENTS
+------------
+
+- BetterBlueprintLoader, which must also be installed
+
+INSTALL
+-------
+
+1. Close the game, and fully close the Minecraft Launcher if you use it.
+
+2. Open your Minecraft Dungeons II Paks folder.
+    Steam: Right click the game in your library, then Manage > Browse local files, then open Dungeons\Content\Paks
+    Minecraft Launcher: C:\XboxGames\Minecraft Dungeons II\Content\Dungeons\Content\Paks
+
+3. Create a folder called ~mods inside the Paks folder if there is not one already.
+
+4. Extract this zip into ~mods, so the files end up in: Paks\~mods\StatsOverlay
+
+5. Remove any other mod that shows currency next to the hotbar (like CurrencyHUD), or both will show in the same place.
+
+UNINSTALL
+---------
+
+Delete the StatsOverlay folder from ~mods.
