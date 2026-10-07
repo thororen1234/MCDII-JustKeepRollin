@@ -50,6 +50,8 @@ public class ModsPage : UUserWidget
     bool hoverChanged;
     string detailsShown;
     int selected;
+    // The page shown is made in the loader's own look: the whole tab is, or this mod's page crashed the game once.
+    bool plain;
     // Widget settings' widgets, made again each time the page is.
     List<UUserWidget> settingWidgets = new();
     // Slider settings' value texts, by setting index: dragging updates the text, not the whole page.
@@ -149,7 +151,10 @@ public class ModsPage : UUserWidget
             return;
         }
         refreshWanted = false;
-        manager.MakingPage();
+        // A mod's page that crashed the game in the game's look is made plain, even when the rest of the tab isn't.
+        var folder = selected == ListPage ? "" : SelectedFolder();
+        plain = look.Plain || (folder != "" && manager.PlainPageOf(folder));
+        manager.MakingPage(plain ? "" : folder);
         var hadFocus = FocusedRow(out var focusKey);
         if (focusWanted == "") focusWanted = focusKey;
         content.ClearChildren();
@@ -280,7 +285,7 @@ public class ModsPage : UUserWidget
     /// <summary>One of the game's settings rows for the page, or null (plain look, or not in the game).</summary>
     GameRow? Game(string kind, int index, string action, string name)
     {
-        if (look == null || look.Plain) return null;
+        if (look == null || plain) return null;
         var row = GameRow.Make(this, look, kind, index, action);
         if (row == null) return null;
         rows.Add(row);
@@ -458,7 +463,7 @@ public class ModsPage : UUserWidget
         if (heading != null)
         {
             Add(heading, 0);
-            if (manager.PlainPage)
+            if (manager.AnyPlainPage)
             {
                 var retry = Game(GameRow.Button, -1, "retryPlain", "Retry Game Look");
                 if (retry != null) Add(retry, 8);
@@ -481,7 +486,7 @@ public class ModsPage : UUserWidget
             header.AddChildToHorizontalBox(Dimmed(Text($"{manager.Running()} of {manager.Mods.Count} running", "body")))?.SetVerticalAlignment(EVerticalAlignment.VAlign_Bottom);
             Add(header, 0);
         }
-        if (manager.PlainPage)
+        if (manager.AnyPlainPage)
             AddRow("Retry Game Look", null, -1, "retryPlain", 8);
         if (manager.Notice != "") Add(Wrapped(manager.Notice), 8);
         if (manager.Warning != "") Add(Wrapped(manager.Warning), 8);
@@ -796,7 +801,7 @@ public class ModsPage : UUserWidget
     /// </summary>
     bool AddGameSetting(string folder, int index, SettingEntry setting, string value)
     {
-        if (manager == null || look == null || look.Plain) return false;
+        if (manager == null || look == null || plain) return false;
         GameRow? row = null;
         float top = 4;
         switch (setting.Type)

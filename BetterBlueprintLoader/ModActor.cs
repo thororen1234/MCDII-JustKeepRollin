@@ -18,7 +18,7 @@ namespace BetterBlueprintLoader;
     Description = "Stops every running mod and starts them again, in their order. Handy when making mods.")]
 [ModSetting.Keybind(ModManager.RestartKeySetting, "Restart Mods Key", Default = "F12",
     Description = "Restarts the mods from anywhere, like the Restart button.")]
-[ModSetting.Text("If the game crashes while a mod is starting, BetterBlueprintLoader turns that mod off and tells you on the main menu. Turn it back on here when the mod is updated.")]
+[ModSetting.Text("If the game crashes while a mod is starting or getting its saved settings, BetterBlueprintLoader turns that mod off and tells you on the main menu. Turn it back on here when the mod is updated. If a mod's settings page crashes the game, that page is shown in a plain look from then on.")]
 #pragma warning disable NR0001
 public class ModActor : AActor, ISettingsEvents
 #pragma warning restore NR0001

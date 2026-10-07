@@ -24,7 +24,7 @@ BetterBlueprintLoader's own page has:
     Restart Mods           Stops every mod and starts them again. Handy when making mods.
     Restart Mods Key       A key that does the same from anywhere: F12 unless you change it.
 
-If the game crashes while a mod is starting, BetterBlueprintLoader turns that mod off and tells you on the main menu the next time. Turn it back on in the Mods tab when the mod is updated.
+If the game crashes while a mod is starting or getting its saved settings, BetterBlueprintLoader turns that mod off and tells you on the main menu the next time. Turn it back on in the Mods tab when the mod is updated. If a mod's settings page crashes the game, that page is shown in a plain look from then on.
 
 If the game updates, the Mods tab says so: if a level then crashes while loading, BetterBlueprintLoader needs an update too.
 

@@ -392,7 +392,7 @@ public class GameMenus : AActor
     void ShowPage()
     {
         if (settingsPanel == null || manager == null) return;
-        manager.MakingPage();
+        manager.MakingPage("");
         // The rows the last tab showed: the slider's look to copy (the game has no style asset for it).
         if (look != null) Note(look.Capture(settingsList));
         if (page == null)

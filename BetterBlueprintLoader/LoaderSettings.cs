@@ -15,10 +15,15 @@ public class LoaderSettings : USaveGame
     public List<string> Crashed = new();
     // The mod starting right now: still set when the game starts again, that mod crashed it.
     public string Starting;
+    // Set while that mod is getting its saved settings, the last part of starting: a mod can crash on a saved value.
+    public bool GettingSettings;
     // Set while the Mods page is being made in the game's look: still set when the game starts again, that crashed it,
-    // and the page is made in the loader's own look from then on.
+    // and the page is made in the loader's own look from then on: only that mod's settings page (MakingPageOf, its
+    // folder), or the whole tab when it was the list (empty).
     public bool MakingPage;
+    public string MakingPageOf;
     public bool PlainPage;
+    public List<string> PlainPages = new();
     // How many times PlainPage was cleared because the page's crashes were found to be something else (the page destroyed
     // while made; added to the screen twice; a variable named "none").
     public int PageFixes;

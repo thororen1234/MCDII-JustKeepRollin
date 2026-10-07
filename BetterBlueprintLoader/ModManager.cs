@@ -84,9 +84,18 @@ public class ModManager : AActor
         if (settings.Starting != "")
         {
             if (!settings.Crashed.Contains(settings.Starting)) settings.Crashed.Add(settings.Starting);
-            Notice = $"{Short(settings.Starting)} crashed the game while starting, so it's turned off. Turn it back on in Settings > Mods.";
-            Log.Write($"{settings.Starting} crashed the game while starting: turned off");
+            if (settings.GettingSettings)
+            {
+                Notice = $"{Short(settings.Starting)} crashed the game while getting its saved settings, so it's turned off. Reset its settings in Settings > Mods, then turn it back on.";
+                Log.Write($"{settings.Starting} crashed the game while getting its saved settings: turned off");
+            }
+            else
+            {
+                Notice = $"{Short(settings.Starting)} crashed the game while starting, so it's turned off. Turn it back on in Settings > Mods.";
+                Log.Write($"{settings.Starting} crashed the game while starting: turned off");
+            }
             settings.Starting = "";
+            settings.GettingSettings = false;
             Save();
         }
 
@@ -99,9 +108,21 @@ public class ModManager : AActor
         }
         if (settings.MakingPage)
         {
+            var folder = settings.MakingPageOf;
             settings.MakingPage = false;
-            settings.PlainPage = true;
-            Log.Write("The game crashed while the Mods page was being made in the game's look: it's made plain from now on");
+            settings.MakingPageOf = "";
+            if (folder == "")
+            {
+                settings.PlainPage = true;
+                Log.Write("The game crashed while the Mods page was being made in the game's look: it's made plain from now on");
+            }
+            else
+            {
+                if (!settings.PlainPages.Contains(folder)) settings.PlainPages.Add(folder);
+                var line = $"{folder} crashed the game while its settings page was being made, so that page is made plain now. Retry Game Look in Settings > Mods tries again.";
+                Notice = Notice == "" ? line : Notice + "\n" + line;
+                Log.Write($"The game crashed while {folder}'s settings page was being made in the game's look: it's made plain from now on");
+            }
             Save();
         }
         menus = GameMenus.Start(this);
@@ -262,10 +283,29 @@ public class ModManager : AActor
             States[index] = actors[index] != null ? "Running" : "Couldn't start";
         }
         Times[index] = UKismetMathLibrary.GetTotalMilliseconds(UKismetMathLibrary.Subtract_DateTimeDateTime(UKismetMathLibrary.Now(), started));
+        // The mod gets each setting that isn't on its default, once it has started. It's still marked as starting
+        // meanwhile, and as getting them: a crash on a saved value leaves both marks for next time.
+        if (actors[index] != null && HasSaved(Folders[index]))
+        {
+            settings.GettingSettings = true;
+            SaveNow();
+            SendSaved(Folders[index], actors[index]);
+            settings.GettingSettings = false;
+        }
         settings.Starting = "";
         SaveNow();
-        // The mod gets each setting that isn't on its default, once it has started.
-        if (actors[index] != null) SendSaved(Folders[index], actors[index]);
+    }
+
+    /// <summary>Whether a mod has saved values or keybinds: SendSaved may send it something.</summary>
+    bool HasSaved(string folder)
+    {
+        if (settings == null) return false;
+        var prefix = folder + "|";
+        foreach (var key in settings.ValueKeys)
+            if (UKismetStringLibrary.StartsWith(key, prefix, ESearchCase.CaseSensitive)) return true;
+        foreach (var key in settings.KeyIds)
+            if (UKismetStringLibrary.StartsWith(key, prefix, ESearchCase.CaseSensitive)) return true;
+        return false;
     }
 
     /// <summary>
@@ -679,23 +719,33 @@ public class ModManager : AActor
     public void RetryPlainPage()
     {
         if (settings == null) return;
+        // Not PageFixes: setting it back made the next start clear the mark of a crash while making the page, so it
+        // took a second crash to make the page plain again.
         settings.PlainPage = false;
-        settings.PageFixes = 0;
+        settings.PlainPages.Clear();
         Save();
     }
+
+    /// <summary>Whether a mod's own settings page is made plain (making it in the game's look crashed the game once).</summary>
+    public bool PlainPageOf(string folder) => settings != null && settings.PlainPages.Contains(folder);
+
+    /// <summary>Whether any page is made plain: the Mods list then offers to retry the game's look.</summary>
+    public bool AnyPlainPage => settings != null && (settings.PlainPage || settings.PlainPages.Count > 0);
 
     // When the Mods page was last made: it counts as made once it has been on screen for a moment.
     double pageMadeAt;
 
     /// <summary>
     /// Marks the Mods page as being made, saved at once: if the game crashes before the page has been on screen for a
-    /// second (making or drawing it), the mark is still there when the game starts again.
+    /// second (making or drawing it), the mark is still there when the game starts again. Which page: a mod's folder,
+    /// or empty for the list (and the tab itself).
     /// </summary>
-    public void MakingPage()
+    public void MakingPage(string folder)
     {
         pageMadeAt = World.RealTime(this);
-        if (settings == null || settings.MakingPage) return;
+        if (settings == null || (settings.MakingPage && settings.MakingPageOf == folder)) return;
         settings.MakingPage = true;
+        settings.MakingPageOf = folder;
         SaveNow();
     }
 
@@ -703,6 +753,7 @@ public class ModManager : AActor
     {
         if (settings == null || !settings.MakingPage || World.RealTime(this) - pageMadeAt < 1) return;
         settings.MakingPage = false;
+        settings.MakingPageOf = "";
         Save();
     }
 
