@@ -1,7 +1,7 @@
 STATS OVERLAY
 =============
 
-See your Emeralds, Echo Shards, Enchantment Points, Soul Storms, and more!
+See your Emeralds, Echo Shards, Enchantment Points, Soul Storms, and more all configurable in settings!
 
 It uses the game's own icons and font, updates live, and fades in and out with the hotbar, so it's hidden in menus and
 on loading screens.
