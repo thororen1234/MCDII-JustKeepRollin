@@ -1,4 +1,5 @@
 using NeoRune;
+using UE.CommonUI;
 using UE.CoreUObject;
 using UE.Engine;
 using UE.Slate;
@@ -13,18 +14,34 @@ namespace BetterBlueprintLoader;
 /// </summary>
 public class MenuLabel : ScreenWidget
 {
+    // The game's body text style: its font is the Minecraft one of the main menu's Settings and Party.
+    const string FontStyle = "/OreUI/UI/Typography/TextStyles/Style_Body_Text.Style_Body_Text_C";
+    const int FontSize = 36;
+
     ModManager? manager;
     UTextBlock? text;
 
     public static MenuLabel? Show(ModManager manager)
     {
+        // Loaded before anything is made: loading can let the garbage collector run.
+        var styleClass = Unreal.LoadClass<UCommonTextStyle>(FontStyle);
         var label = UWidgetBlueprintLibrary.Create(manager, Unreal.ClassOf<MenuLabel>(), World.PlayerController(manager)) as MenuLabel;
         if (label == null) return null;
         label.manager = manager;
         var tree = Ui.Tree(label);
         var canvas = UGameplayStatics.SpawnObject(Unreal.ClassOf<UCanvasPanel>(), tree) as UCanvasPanel;
-        label.text = Ui.Text(tree, "", 13);
+        label.text = Ui.Text(tree, "", FontSize);
         if (tree == null || canvas == null || label.text == null) return null;
+        // In the style's font, at the label's own size and colour (the default font if the style isn't in the game).
+        if (styleClass != null && UGameplayStatics.SpawnObject(styleClass, tree) is UCommonTextStyle style)
+        {
+            style.GetFont(out var font);
+            if (font.FontObject != null)
+            {
+                font.Size = FontSize;
+                label.text.SetFont(font);
+            }
+        }
         label.text.SetShadowOffset(new FVector2D { X = 1, Y = 1 });
         // The widget fills the screen and the line sits at its bottom left: placing a small widget at the screen's
         // corner (ShowAt) left it at the top left for some players, cut off by the screen's top edge.
