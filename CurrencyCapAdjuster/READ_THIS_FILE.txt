@@ -1,0 +1,40 @@
+CURRENCY CAP ADJUSTER
+=====================
+
+Set how many Emeralds and Echo Shards you can carry!
+
+Open the game's Settings, Mods, Currency Cap Adjuster, and move the sliders:
+    Emerald Cap      99,000 (the game's cap) up to 16,777,000
+    Echo Shard Cap      100 (the game's cap) up to 16,777,200
+
+Both start at the highest setting. The game stores currency as 32-bit floats, which hold every whole number only up to
+16,777,216, so the caps stop there.
+
+Lowering a cap never takes currency away: if you carry more than the new cap, the cap stays at what you carry.
+
+This only raises the caps; it doesn't give you any currency. No native loader is needed.
+
+REQUIREMENTS
+------------
+
+- BetterBlueprintLoader, which must also be installed
+
+INSTALL
+-------
+
+1. Close the game, and fully close the Minecraft Launcher if you use it.
+
+2. Open your Minecraft Dungeons II Paks folder.
+    Steam: Right click the game in your library, then Manage > Browse local files, then open Dungeons\Content\Paks
+    Minecraft Launcher: C:\XboxGames\Minecraft Dungeons II\Content\Dungeons\Content\Paks
+
+3. Create a folder called ~mods inside the Paks folder if there is not one already.
+
+4. Extract this zip into ~mods, so the files end up in: Paks\~mods\CurrencyCapAdjuster
+
+5. Remove any other mod that changes the currency caps (like CurrencyCapMax), or the two will fight over them.
+
+UNINSTALL
+---------
+
+Delete the CurrencyCapAdjuster folder from ~mods.
