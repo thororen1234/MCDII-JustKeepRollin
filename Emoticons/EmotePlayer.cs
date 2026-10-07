@@ -58,6 +58,8 @@ public class EmotePlayer : UObject
     int emote;
     double startTime;
     FVector startLocation;
+    // The game's montage playing when the emote started (or null): a new one (an attack) stops the emote.
+    UAnimMontage? startMontage;
     // Per slot: its index among the emote's animated bones, or -1 when the emote leaves it at rest.
     List<int> slotData = new();
     int animatedCount;
@@ -98,6 +100,7 @@ public class EmotePlayer : UObject
         playing = true;
         startTime = UGameplayStatics.GetTimeSeconds(owner);
         startLocation = character!.K2_GetActorLocation();
+        startMontage = mesh!.GetAnimInstance()?.GetCurrentActiveMontage();
         // A previous emote may have moved the pelvis.
         if (bones[Pelvis] != FName.None) pose!.SetBoneLocationByName(bones[Pelvis], pelvisRest, EBoneSpaces.ComponentSpace);
         Apply(0);
@@ -126,6 +129,14 @@ public class EmotePlayer : UObject
             Stop();
             return;
         }
+        // Attacking (or drinking a potion, or any of the game's own animations) stops it too.
+        var montage = mesh.GetAnimInstance()?.GetCurrentActiveMontage();
+        if (montage == null) startMontage = null;
+        else if (montage != startMontage)
+        {
+            Stop();
+            return;
+        }
 
         var ticks = (UGameplayStatics.GetTimeSeconds(owner) - startTime) * TicksPerSecond;
         if (EmoteData.Looping(emote))
@@ -150,6 +161,9 @@ public class EmotePlayer : UObject
     void KeepFollowing()
     {
         if (character == null || mesh == null || pose == null) return;
+        // The game shows its weapons again when it likes (turning to a click): they stay hidden until the emote ends.
+        foreach (var component in hidden)
+            if (component != null && component.IsVisible()) component.SetVisibility(false, true);
         foreach (var component in character.K2_GetComponentsByClass(Unreal.ClassOf<USkinnedMeshComponent>()))
         {
             if (component is not USkinnedMeshComponent skinned || skinned == mesh || skinned == pose) continue;
@@ -461,22 +475,52 @@ public class EmotePlayer : UObject
     }
 
     /// <summary>
-    /// Starts the posed mesh from the body's current pose, so bones the emote doesn't turn (hands, eyes) stay where the
-    /// game's animation has them.
+    /// Starts the posed mesh from the body's current pose, each bone relative to its parent so it stays on the posed body.
+    /// The emote's own bones take the skeleton's rest pose (a landing squashes and bends them), and the bones below the
+    /// limbs (hands, feet) its rest bend (a jump bends the knees and feet): the emote only turns its own bones, so the game's
+    /// pose would stay in the others. Their size stays the game's, which shows and hides weapons by shrinking their bones.
     /// </summary>
     void CopyCurrentPose()
     {
         if (mesh == null || pose == null) return;
+        FindRootBones();
+        // Bones come parents first, so each parent is already in place.
         for (int i = 0; i < mesh.GetNumBones(); i++)
         {
             var name = mesh.GetBoneName(i);
-            pose.SetBoneTransformByName(name, mesh.GetBoneTransform(name, ERelativeTransformSpace.RTS_Component), EBoneSpaces.ComponentSpace);
+            var parent = mesh.GetParentBone(name);
+            var current = mesh.GetBoneTransform(name, ERelativeTransformSpace.RTS_Component);
+            if (parent != FName.None)
+            {
+                var local = UKismetMathLibrary.MakeRelativeTransform(current, mesh.GetBoneTransform(parent, ERelativeTransformSpace.RTS_Component));
+                if (bones.Contains(name)) local = mesh.GetRefPoseTransform(i);
+                else if (BelowLimb(name))
+                {
+                    var rest = mesh.GetRefPoseTransform(i);
+                    local = new FTransform { Rotation = rest.Rotation, Translation = rest.Translation, Scale3D = local.Scale3D };
+                }
+                current = UKismetMathLibrary.ComposeTransforms(local, pose.GetBoneTransformByName(parent, EBoneSpaces.ComponentSpace));
+            }
+            pose.SetBoneTransformByName(name, current, EBoneSpaces.ComponentSpace);
         }
+    }
 
+    /// <summary>Whether a bone hangs below one of the limb bones (a hand or foot), not a limb bone itself.</summary>
+    bool BelowLimb(FName bone)
+    {
+        for (var parent = mesh!.GetParentBone(bone); parent != FName.None; parent = mesh.GetParentBone(parent))
+            for (int i = FirstLimb; i < SlotCount; i++)
+                if (bones[i] == parent) return true;
+        return false;
+    }
+
+    /// <summary>The bones hanging off the root beside the pelvis, and everything below them.</summary>
+    void FindRootBones()
+    {
         rootBones.Clear();
         var pelvis = bones[Pelvis];
         if (pelvis == FName.None) return;
-        var root = mesh.GetParentBone(pelvis);
+        var root = mesh!.GetParentBone(pelvis);
         if (root == FName.None) return;
         for (int i = 0; i < mesh.GetNumBones(); i++)
         {

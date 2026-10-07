@@ -3,6 +3,7 @@ using NeoRune;
 using UE.CommonUI;
 using UE.CoreUObject;
 using UE.Engine;
+using UE.IndicatorSystem;
 using UE.Minimap;
 using UE.Slate;
 using UE.SlateCore;
@@ -25,6 +26,11 @@ public class EmoteWheel : ScreenWidget
     const float Radius = 350;
     const float Disc = 900;
     const float Middle = 230;
+    // The game's ring draws its frame Frame wide, but FrameLit wide along its top-left part (whatever Selected and
+    // Selection are set to), so the wheel thickens the rest of the frame to match.
+    const float Frame = 12;
+    const float FrameLit = 16.5f;
+    const float FrameOverlap = 4;
     // Smallest pill; longer names make it wider.
     const float SlotWidth = 120;
     const float SlotHeight = 30;
@@ -65,6 +71,9 @@ public class EmoteWheel : ScreenWidget
     UMaterialInterface? buttonPressed;
     List<string> styleNames = new();
     List<TSubclassOf<UCommonTextStyle>> styleClasses = new();
+    // The game's indicator layers hidden while the wheel is open, and how visible each was.
+    List<UWidget> indicatorLayers = new();
+    List<ESlateVisibility> indicatorVisibility = new();
 
     void Preload()
     {
@@ -104,6 +113,7 @@ public class EmoteWheel : ScreenWidget
         }
         wheel.Layout();
         var middle = new FVector2D { X = 0.5f, Y = 0.5f };
+        wheel.HideIndicators();
         wheel.ShowAt(new FVector2D(), middle, ScreenWidget.AboveGameUI);
         // Without a size the screen slot is a point, so centring it moves nothing. Setting the size resets the
         // anchors to the top left, so they're set again after it.
@@ -117,7 +127,54 @@ public class EmoteWheel : ScreenWidget
     {
         // Not RemoveFromParent: ShowAt's check would put the closed wheel back on the screen.
         Hide();
+        ShowIndicators();
         mod?.WheelClosed();
+    }
+
+    /// <summary>
+    /// Hides the game's name tags, health bars and prompts while the wheel is open: they're drawn over everything on the
+    /// screen whatever its z-order, the wheel included. They're all on the game's indicator layers.
+    /// </summary>
+    void HideIndicators()
+    {
+        // Every user widget's own tree: the HUD is on one of the game's screen stacks, which searches from the top
+        // don't go into.
+        UWidgetBlueprintLibrary.GetAllWidgetsOfClass(this, out var users, Unreal.ClassOf<UUserWidget>(), false);
+        var layerClass = Unreal.ClassOf<UIndicatorLayer>();
+        var pending = new List<UWidget>();
+        foreach (var user in users)
+        {
+            if (user == null || user == this || user.WidgetTree == null || user.WidgetTree.RootWidget == null) continue;
+            pending.Add(user.WidgetTree.RootWidget);
+            while (pending.Count > 0)
+            {
+                var widget = pending[pending.Count - 1];
+                pending.RemoveAt(pending.Count - 1);
+                if (widget == null) continue;
+                if (UKismetMathLibrary.ClassIsChildOf(UGameplayStatics.GetObjectClass(widget), layerClass))
+                {
+                    if (!indicatorLayers.Contains(widget))
+                    {
+                        indicatorLayers.Add(widget);
+                        indicatorVisibility.Add(widget.GetVisibility());
+                        widget.SetVisibility(ESlateVisibility.Hidden);
+                    }
+                    continue;
+                }
+                // Not into user widgets inside it: they're in the list themselves.
+                if (widget is UPanelWidget panel)
+                    foreach (var child in panel.GetAllChildren())
+                        if (child != null && !(child is UUserWidget)) pending.Add(child);
+            }
+        }
+    }
+
+    void ShowIndicators()
+    {
+        for (int i = 0; i < indicatorLayers.Count; i++)
+            if (indicatorLayers[i] != null) indicatorLayers[i].SetVisibility(indicatorVisibility[i]);
+        indicatorLayers.Clear();
+        indicatorVisibility.Clear();
     }
 
     public void Turn(int by)
@@ -237,8 +294,7 @@ public class EmoteWheel : ScreenWidget
         hovered = -1;
         litSlot = -1;
         ring?.SetScalarParameterValue("Divisions", PerPage);
-        // No part lit: with 0 the frame is drawn thicker along the first part (the top of the left side).
-        ring?.SetScalarParameterValue("Selected", -1);
+        ring?.SetScalarParameterValue("Selected", 0);
         title?.SetText("Emotes");
         pageText?.SetText(Pages() > 1 ? $"Page {page + 1} of {Pages()}" : "");
     }
@@ -267,6 +323,15 @@ public class EmoteWheel : ScreenWidget
         if (ringImage != null)
         {
             if (!Place(canvas, ringImage, Disc, Disc)) return false;
+            // Inside the frame, so its stepped corners stay the game's. The strips reach a little into the frame: it's a
+            // pixel thinner on the right and bottom, which left a gap there.
+            float edge = Size / 2 - Disc / 2 + Frame - FrameOverlap;
+            float inner = Disc - 2 * (Frame - FrameOverlap);
+            float extra = FrameLit - Frame + FrameOverlap;
+            if (!Strip(canvas, tree, edge, edge, inner, extra)) return false;
+            if (!Strip(canvas, tree, edge, Size - edge - extra, inner, extra)) return false;
+            if (!Strip(canvas, tree, edge, edge, extra, inner)) return false;
+            if (!Strip(canvas, tree, Size - edge - extra, edge, extra, inner)) return false;
         }
         else
         {
@@ -405,6 +470,19 @@ public class EmoteWheel : ScreenWidget
         // Not named "none": Unreal names ignore case, and a variable named None breaks the compiled code.
         var blank = new FSlateBrush { DrawAs = ESlateBrushDrawType.NoDrawType };
         return new FButtonStyle { Normal = blank, Hovered = blank, Pressed = blank, Disabled = blank, NormalPadding = new FMargin(), PressedPadding = new FMargin() };
+    }
+
+    /// <summary>Puts a black box at a place on the canvas (its top left corner) and size.</summary>
+    static bool Strip(UCanvasPanel canvas, UObject outer, float x, float y, float width, float height)
+    {
+        var strip = UGameplayStatics.SpawnObject(Unreal.ClassOf<UBorder>(), outer) as UBorder;
+        if (strip == null) return false;
+        strip.SetBrushColor(new FLinearColor { R = 0, G = 0, B = 0, A = 1 });
+        var slot = canvas.AddChildToCanvas(strip);
+        if (slot == null) return false;
+        slot.SetPosition(new FVector2D { X = x, Y = y });
+        slot.SetSize(new FVector2D { X = width, Y = height });
+        return true;
     }
 
     /// <summary>Puts a widget of a size in the middle of the canvas.</summary>
