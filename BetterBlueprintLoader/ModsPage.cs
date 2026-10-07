@@ -458,6 +458,11 @@ public class ModsPage : UUserWidget
         if (heading != null)
         {
             Add(heading, 0);
+            if (manager.PlainPage)
+            {
+                var retry = Game(GameRow.Button, -1, "retryPlain", "Retry Game Look");
+                if (retry != null) Add(retry, 8);
+            }
             if (manager.Notice != "") Add(Wrapped(manager.Notice), 8);
             if (manager.Warning != "") Add(Wrapped(manager.Warning), 8);
             ModRow(-1, OwnName(), 4);
@@ -476,6 +481,8 @@ public class ModsPage : UUserWidget
             header.AddChildToHorizontalBox(Dimmed(Text($"{manager.Running()} of {manager.Mods.Count} running", "body")))?.SetVerticalAlignment(EVerticalAlignment.VAlign_Bottom);
             Add(header, 0);
         }
+        if (manager.PlainPage)
+            AddRow("Retry Game Look", null, -1, "retryPlain", 8);
         if (manager.Notice != "") Add(Wrapped(manager.Notice), 8);
         if (manager.Warning != "") Add(Wrapped(manager.Warning), 8);
         AddRow(OwnName(), ModRight(-1), -1, "select:-1", 12);
@@ -996,6 +1003,11 @@ public class ModsPage : UUserWidget
             case "website":
                 var info = manager.InfoOf(folder);
                 if (info != null) UKismetSystemLibrary.LaunchURL(info.AuthorUrl);
+                return;
+            case "retryPlain":
+                manager.RetryPlainPage();
+                manager.Note("The game's look will be retried the next time you open the Mods page.");
+                refreshWanted = true;
                 return;
             case "reset":
                 // The Reset row asks first; a page drawn without it resets at once.

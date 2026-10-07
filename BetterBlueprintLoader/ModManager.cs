@@ -676,6 +676,14 @@ public class ModManager : AActor
     /// <summary>Whether the Mods page is made plain (making it in the game's look crashed the game once).</summary>
     public bool PlainPage => settings != null && settings.PlainPage;
 
+    public void RetryPlainPage()
+    {
+        if (settings == null) return;
+        settings.PlainPage = false;
+        settings.PageFixes = 0;
+        Save();
+    }
+
     // When the Mods page was last made: it counts as made once it has been on screen for a moment.
     double pageMadeAt;
 
