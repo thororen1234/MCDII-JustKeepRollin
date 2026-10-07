@@ -768,7 +768,7 @@ public class ModManager : AActor
             if (OwnToggle(MenuLabelSetting)) ShowMenuLabel();
             else
             {
-                label?.RemoveFromParent();
+                label?.Remove();
                 label = null;
             }
         }
