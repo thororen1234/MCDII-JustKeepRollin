@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using NeoRune;
+using UE.CommonUI;
 using UE.CoreUObject;
 using UE.Engine;
 using UE.Minimap;
@@ -15,8 +16,8 @@ namespace StatsOverlay;
 /// </summary>
 public class StatsBar : ScreenWidget
 {
-    const string FontPath = "/Game/Spicewood/Fonts/Spicewood/FF_Spicewood.FF_Spicewood";
-    const string Typeface = "Sixteen Bold";
+    // The game's body text style: its font is the Minecraft one of the main menu's Settings and Party.
+    const string FontStyle = "/OreUI/UI/Typography/TextStyles/Style_Body_Text.Style_Body_Text_C";
     // Sizes in the hotbar's units (its lower bar is 160 high).
     const float TextSize = 36;
     const int IconSize = 44;
@@ -26,6 +27,7 @@ public class StatsBar : ScreenWidget
 
     // The game's assets, loaded before any widget is made (loading can let the garbage collector run).
     UObject? font;
+    FName typeface;
     List<UTexture2D?> icons = new();
 
     UPanelWidget? root;
@@ -42,7 +44,14 @@ public class StatsBar : ScreenWidget
     /// <summary>Loads the font and an icon per display (<paramref name="iconPaths"/>, in display order), and makes the widgets.</summary>
     public void Setup(List<string> iconPaths)
     {
-        font = Load(FontPath);
+        // The style's font and typeface, taken from a style object made from its class.
+        var styleClass = Unreal.LoadClass<UCommonTextStyle>(FontStyle);
+        if (styleClass != null && UGameplayStatics.SpawnObject(styleClass, this) is UCommonTextStyle style)
+        {
+            style.GetFont(out var styleFont);
+            font = styleFont.FontObject;
+            typeface = styleFont.TypefaceFontName;
+        }
         foreach (var path in iconPaths)
         {
             icons.Add(Load(path) as UTexture2D);
@@ -125,14 +134,14 @@ public class StatsBar : ScreenWidget
         }
     }
 
-    /// <summary>The game's HUD font with an outline, or the default font if it isn't in the game.</summary>
+    /// <summary>The game's Minecraft font with an outline, or the default font if it isn't in the game.</summary>
     FSlateFontInfo Font()
     {
         var info = UMinimapHelpersLibrary.GetDefaultFont();
         if (font != null)
         {
             info.FontObject = font;
-            info.TypefaceFontName = Typeface;
+            info.TypefaceFontName = typeface;
         }
         info.Size = TextSize;
         var outline = info.OutlineSettings;
