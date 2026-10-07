@@ -44,6 +44,10 @@ public class CustomTab : UObject
     USpicewoodButtonBase? iconOn;
     bool chosen;
     bool reported;
+    // This mod's section on the page: the mod whose section is first wakes the game's picture up.
+    UWidget? ownSection;
+    // Set when the Custom tab is left for one of the game's: its picture is woken up on the next Keep.
+    bool wakePicture;
     float tileWidth;
     float tileHeight;
     int columns;
@@ -67,6 +71,7 @@ public class CustomTab : UObject
     {
         if (itemGrid.GetParent() is not UGridPanel cells || itemGrid.Slot is not UGridSlot cell) return false;
         grid = itemGrid;
+        ownSection = section;
         panel = null;
         for (int c = 0; c < cells.GetChildrenCount(); c++)
         {
@@ -139,14 +144,43 @@ public class CustomTab : UObject
             subscribed = tabs;
         }
         GiveIcon(tag);
+        if (wakePicture)
+        {
+            wakePicture = false;
+            WakePicture();
+        }
         // The game may show its list again, or name its own category, on its own.
         if (chosen) Show();
     }
 
     void Selected(FGameplayTag tab)
     {
+        bool was = chosen;
         chosen = tab.TagName.ToString() == Tag;
+        if (was && !chosen) wakePicture = true;
         Show();
+    }
+
+    /// <summary>
+    /// The game's picture of an item (the character in a cape, a pet) stays empty after the Custom tab until an item is
+    /// hovered or the screen is opened again. Its grid's first item gets the focus and is told it's hovered, which fills it.
+    /// </summary>
+    void WakePicture()
+    {
+        if (panel == null || ownSection == null || panel.GetChildAt(0) != ownSection) return;
+        if (tiles == null || !UKismetSystemLibrary.IsValid(tiles)) return;
+        var entries = tiles.GetDisplayedEntryWidgets();
+        UAS_SpicewoodInventoryGridEntry? first = null;
+        foreach (var entry in entries)
+            if (first == null && entry is UAS_SpicewoodInventoryGridEntry found && found.IsVisible()) first = found;
+        if (first == null)
+        {
+            Log.Write($"Couldn't wake the Collectibles picture: no item shown ({entries.Count} entries)");
+            return;
+        }
+        first.SetUserFocus(World.PlayerController(this));
+        first.OnButtonHoveredChanged(first);
+        Log.Write($"Woke the Collectibles picture: focused and hovered {UKismetSystemLibrary.GetObjectName(first)} (focus {first.HasAnyUserFocus()}, hovered {first.IsHovered()})");
     }
 
     void Show()

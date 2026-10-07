@@ -48,6 +48,8 @@ public class CapeRow : ScreenWidget
     List<UImage> icons = new();
     List<UImage> corners = new();
     List<UUniformGridSlot> cells = new();
+    // Whether each box is lit as having the controller's focus.
+    List<bool> lit = new();
     // The capes shown (0 for the game's), to see when the folder has others.
     List<int> shown = new();
     // The game's cape on its box: it changes when the game's menu picks another.
@@ -121,6 +123,7 @@ public class CapeRow : ScreenWidget
         icons.Clear();
         corners.Clear();
         cells.Clear();
+        lit.Clear();
         shown.Clear();
         for (int i = 0; i < numbers.Count; i++)
         {
@@ -178,6 +181,43 @@ public class CapeRow : ScreenWidget
         Highlight();
     }
 
+    /// <summary>
+    /// With a controller: puts the focus on the cape worn when nothing in the Custom tab has it (the first section does,
+    /// so the two mods don't take it from each other), lights the box with the focus and scrolls it into view. The D-pad
+    /// then moves between boxes and A picks one.
+    /// </summary>
+    public override void Tick(FGeometry geometry, float deltaTime)
+    {
+        if (buttons.Count == 0 || !IsVisible()) return;
+        var page = GetParent() as UScrollBox;
+        if (page != null && page.IsVisible() && page.GetChildAt(0) == this && UsingController() && !page.HasFocusedDescendants())
+            FocusWorn();
+        for (int i = 0; i < buttons.Count; i++)
+        {
+            bool focused = buttons[i].HasKeyboardFocus();
+            if (focused == lit[i]) continue;
+            lit[i] = focused;
+            buttons[i].SetStyle(BoxStyle(focused));
+            if (focused) page?.ScrollWidgetIntoView(boxes[i], true, EDescendantScrollDestination.IntoView, 0);
+        }
+    }
+
+    void FocusWorn()
+    {
+        if (capes == null) return;
+        int at = 0;
+        for (int i = 0; i < buttons.Count; i++)
+            if (buttons[i].Number == capes.Cape) at = i;
+        buttons[at].SetUserFocus(World.PlayerController(this));
+    }
+
+    /// <summary>Whether the player is using a controller now (the game shows controller buttons).</summary>
+    bool UsingController()
+    {
+        var input = USubsystemBlueprintLibrary.GetLocalPlayerSubSystemFromPlayerController(World.PlayerController(this), Unreal.ClassOf<UE.CommonInput.UCommonInputSubsystem>()) as UE.CommonInput.UCommonInputSubsystem;
+        return input != null && input.GetCurrentInputType() == UE.CommonInput.ECommonInputType.Gamepad;
+    }
+
     void Highlight()
     {
         if (capes == null) return;
@@ -196,7 +236,7 @@ public class CapeRow : ScreenWidget
         var mark = UGameplayStatics.SpawnObject(Unreal.ClassOf<UImage>(), tree) as UImage;
         if (box == null || button == null || layers == null || image == null || mark == null) return;
         button.Setup(this, number);
-        button.SetStyle(BoxStyle());
+        button.SetStyle(BoxStyle(false));
         box.AddChild(button);
         var content = button.AddChild(layers) as UButtonSlot;
         content?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Fill);
@@ -258,6 +298,7 @@ public class CapeRow : ScreenWidget
         icons.Add(image);
         corners.Add(mark);
         cells.Add(cell);
+        lit.Add(false);
     }
 
     /// <summary>Sizes a box and puts it in its place in the grid.</summary>
@@ -324,18 +365,21 @@ public class CapeRow : ScreenWidget
     UObject? Load(string path) =>
         UKismetSystemLibrary.LoadAsset_Blocking(UKismetSystemLibrary.Conv_SoftObjPathToSoftObjRef(UKismetSystemLibrary.MakeSoftObjectPath(path)));
 
-    /// <summary>The game's item box (normal, hovered and pressed), or a plain one if it isn't in the game.</summary>
-    FButtonStyle BoxStyle()
+    /// <summary>
+    /// The game's item box (normal, hovered and pressed), or a plain one if it isn't in the game. Focused, it looks hovered
+    /// all the time: the controller's focus has no look of its own.
+    /// </summary>
+    FButtonStyle BoxStyle(bool focused)
     {
         if (slotStyle == null)
         {
             var idle = Rounded(new FLinearColor { R = 0.03f, G = 0.03f, B = 0.04f, A = 0.9f }, new FLinearColor { R = 1, G = 1, B = 1, A = 0.15f }, 2, 0);
             var hover = Rounded(new FLinearColor { R = 0.05f, G = 0.05f, B = 0.06f, A = 0.95f }, new FLinearColor { R = 1, G = 1, B = 1, A = 0.6f }, 2, 0);
-            return new FButtonStyle { Normal = idle, Hovered = hover, Pressed = hover, Disabled = idle, NormalPadding = new FMargin(), PressedPadding = new FMargin() };
+            return new FButtonStyle { Normal = focused ? hover : idle, Hovered = hover, Pressed = hover, Disabled = idle, NormalPadding = new FMargin(), PressedPadding = new FMargin() };
         }
         return new FButtonStyle
         {
-            Normal = boxNormal,
+            Normal = focused ? boxHovered : boxNormal,
             Hovered = boxHovered,
             Pressed = boxPressed,
             Disabled = boxNormal,
