@@ -77,7 +77,6 @@ public class StatsBar : ScreenWidget
         if (value == "")
         {
             item.SetVisibility(ESlateVisibility.Collapsed);
-            Log.Write($"Display {display} hidden: visibility now {item.GetVisibility()}");
             return;
         }
         text.SetText(value);

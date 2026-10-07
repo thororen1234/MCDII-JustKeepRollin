@@ -26,11 +26,11 @@ public class ModActor : AActor
     // Items the current drag has been over, and the one to click next.
     readonly List<UCommonButtonBase> dragged = [];
     UCommonButtonBase? pending;
-    // Controller. The game handles A itself, out of the mod's sight: the only sign of it is that the item with the
-    // focus loses it and gets it back at once ("bounces"). That happens when A goes down, and when it comes up only
-    // if that's on the item it went down on: letting go anywhere else leaves no trace. (The player controller never
-    // sees A while a menu is open, and the items never say they're pressed.) So a drag starts when the focus moves
-    // off the item A went down on before it comes up, and runs until A is pressed again.
+    // Controller. The game handles A itself, mostly out of the mod's sight. A going down bounces the item's focus (it
+    // loses it and gets it back at once). A coming up on the item it went down on comes as the left mouse button
+    // coming up on it, sometimes with a bounce too; anywhere else, only the key catcher below sees it. (The player
+    // controller never sees A while a menu is open, and the items never say they're pressed.) So a drag starts when
+    // the focus moves off the item A went down on before it comes up, and runs until it does.
     UCommonButtonBase? focused;
     UCommonButtonBase? lostBy;
     int lostAt = -1;
@@ -41,6 +41,9 @@ public class ModActor : AActor
     readonly List<UCommonButtonBase> padDragged = [];
     // The item A was pressed on to stop a drag: its next bounce is A coming up, unless the focus moves first.
     UCommonButtonBase? padStopped;
+    // Where and when A last came up as the mouse.
+    UCommonButtonBase? padUpOn;
+    double padUpAt;
     // The item the mod clicked, and when: the click bounces its focus too, but that isn't A.
     UCommonButtonBase? clicked;
     int clickedAt = -1;
@@ -149,6 +152,13 @@ public class ModActor : AActor
     /// <summary>A went down or came up on the item with the focus. Going down, the game toggles the item itself.</summary>
     void OnPadBounce(UCommonButtonBase slot)
     {
+        // A coming up can bounce the focus as well as come as the mouse: that's the same release, not A going down.
+        if (slot == padUpOn && World.RealTime(this) - padUpAt < 0.1)
+        {
+            padUpOn = null;
+            return;
+        }
+        padUpOn = null;
         if (slot == padStopped)
         {
             Note($"A up on {Name(slot)} after stopping");
@@ -235,6 +245,19 @@ public class ModActor : AActor
     }
 
     public bool Active => panelShown;
+
+    /// <summary>
+    /// The left mouse button came up on an item. On a controller that's A coming up (the game passes it on as the
+    /// mouse, often without bouncing the focus): a tap ends there, before any drag.
+    /// </summary>
+    public void PadMouseUp(UCommonButtonBase slot)
+    {
+        if (!panelShown || padStart == null || !UsingController()) return;
+        Note($"A up on {Name(slot)} (mouse){(padDragging ? ", drag ended" : "")}");
+        ResetPad();
+        padUpOn = slot;
+        padUpAt = World.RealTime(this);
+    }
 
     /// <summary>The mouse went down on an item: a drag may start from it, and the game marks it itself.</summary>
     public void DragStarted(UCommonButtonBase slot)
@@ -360,6 +383,13 @@ public class DragCatcher : UUserWidget
     public override FEventReply OnMouseButtonDown(FGeometry geometry, FPointerEvent e)
     {
         if (slot != null && mod != null && mod.Active) mod.DragStarted(slot);
+        return UWidgetBlueprintLibrary.Unhandled();
+    }
+
+    public override FEventReply OnMouseButtonUp(FGeometry geometry, FPointerEvent e)
+    {
+        if (slot != null && mod != null && mod.Active && UKismetInputLibrary.PointerEvent_GetEffectingButton(e).KeyName.ToString() == "LeftMouseButton")
+            mod.PadMouseUp(slot);
         return UWidgetBlueprintLibrary.Unhandled();
     }
 

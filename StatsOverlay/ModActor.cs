@@ -351,7 +351,6 @@ public class ModActor : AActor, ISettingsEvents
         else if (id == LayoutSetting) column = ModSettings.ToInt(value) == 1;
         else if (id == SizeSetting) size = (float)UKismetMathLibrary.FClamp(ModSettings.ToNumber(value), 0.5, 2);
         else return;
-        Log.Write($"Setting {id} = {value}: emeralds {showEmeralds}, echo shards {showEchoShards}, enchantment {showEnchantment}, soul storm {showSoulStorm}, xp {showXP}, health {showHealth}");
         Restyle();
     }
 
