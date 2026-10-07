@@ -30,7 +30,7 @@ namespace StatsOverlay;
 [ModSetting.Toggle(HealthSetting, "Health", Default = false,
     Description = "Your health as numbers.")]
 [ModSetting.Heading("Look")]
-[ModSetting.Select(LayoutSetting, "Layout", "Side by side", "One under the other")]
+[ModSetting.Select(LayoutSetting, "Layout", "Side by side", "One under the other", Default = 1)]
 [ModSetting.Slider(SizeSetting, "Size", Default = 1, Min = 0.5, Max = 2, Step = 0.05, Percentage = true)]
 public class ModActor : AActor, ISettingsEvents
 {
@@ -71,7 +71,7 @@ public class ModActor : AActor, ISettingsEvents
     bool showSoulStorm = true;
     bool showXP;
     bool showHealth;
-    bool column;
+    bool column = true;
     float size = 1;
 
     StatsBar? bar;
@@ -362,7 +362,7 @@ public class ModActor : AActor, ISettingsEvents
         showSoulStorm = true;
         showXP = false;
         showHealth = false;
-        column = false;
+        column = true;
         size = 1;
         Restyle();
     }

@@ -14,7 +14,7 @@ Displays:
     Experience           off  XP towards the next level
     Health               off  your health as numbers
 
-To turn displays on or off, show them one under the other, or make them bigger or smaller, open the game's Settings,
+To turn displays on or off, show them side by side, or make them bigger or smaller, open the game's Settings,
 Mods, Stats Overlay.
 
 REQUIREMENTS
