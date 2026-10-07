@@ -10,17 +10,19 @@ namespace StatsOverlay;
 
 /// <summary>
 /// The overlay: an icon and a number for each display that's turned on, side by side or one under the other, in the
-/// game's font. <see cref="Set"/> gives a display its text; an empty text hides it.
+/// game's font. <see cref="Set"/> gives a display its text; an empty text hides it. It's made in the hotbar's units:
+/// the mod scales it to the hotbar's size on screen.
 /// </summary>
 public class StatsBar : ScreenWidget
 {
     const string FontPath = "/Game/Spicewood/Fonts/Spicewood/FF_Spicewood.FF_Spicewood";
     const string Typeface = "Sixteen Bold";
-    // Sizes at 100%.
-    const float TextSize = 18;
-    const float IconSize = 26;
-    const float IconGap = 4;
-    const float ItemGap = 14;
+    // Sizes in the hotbar's units (its lower bar is 160 high).
+    const float TextSize = 36;
+    const int IconSize = 44;
+    const float IconGap = 8;
+    const float ItemGap = 28;
+    const float RowGap = 6;
 
     // The game's assets, loaded before any widget is made (loading can let the garbage collector run).
     UObject? font;
@@ -32,7 +34,6 @@ public class StatsBar : ScreenWidget
     // What each display shows now (empty: hidden), kept to fill the widgets when they're made again.
     List<string> shown = new();
     bool column;
-    float scale;
 
     /// <summary>An overlay not made yet: keep it in a field, then <see cref="Setup"/> it (which loads the game's assets).</summary>
     public static StatsBar? Create(UObject context) =>
@@ -41,7 +42,6 @@ public class StatsBar : ScreenWidget
     /// <summary>Loads the font and an icon per display (<paramref name="iconPaths"/>, in display order), and makes the widgets.</summary>
     public void Setup(List<string> iconPaths)
     {
-        scale = 1;
         font = Load(FontPath);
         foreach (var path in iconPaths)
         {
@@ -51,12 +51,11 @@ public class StatsBar : ScreenWidget
         Build();
     }
 
-    /// <summary>Side by side (false) or one under the other (true), and the size (1 = 100%).</summary>
-    public void Style(bool asColumn, float size)
+    /// <summary>Side by side (false) or one under the other (true).</summary>
+    public void Style(bool asColumn)
     {
-        if (asColumn == column && size == scale) return;
+        if (asColumn == column) return;
         column = asColumn;
-        scale = size;
         Build();
     }
 
@@ -75,8 +74,14 @@ public class StatsBar : ScreenWidget
         var text = texts[display];
         if (item == null || text == null) return;
         var value = shown[display];
-        if (value != "") text.SetText(value);
-        item.SetVisibility(value == "" ? ESlateVisibility.Collapsed : ESlateVisibility.HitTestInvisible);
+        if (value == "")
+        {
+            item.SetVisibility(ESlateVisibility.Collapsed);
+            Log.Write($"Display {display} hidden: visibility now {item.GetVisibility()}");
+            return;
+        }
+        text.SetText(value);
+        item.SetVisibility(ESlateVisibility.HitTestInvisible);
     }
 
     void Build()
@@ -102,20 +107,19 @@ public class StatsBar : ScreenWidget
             var icon = UGameplayStatics.SpawnObject(Unreal.ClassOf<UImage>(), tree) as UImage;
             if (icon != null && icons[i] != null)
             {
-                icon.SetBrush(UWidgetBlueprintLibrary.MakeBrushFromTexture(icons[i], 0, 0));
-                icon.SetDesiredSizeOverride(new FVector2D { X = IconSize * scale, Y = IconSize * scale });
+                // The brush's size is the icon's: the textures are bigger.
+                icon.SetBrush(UWidgetBlueprintLibrary.MakeBrushFromTexture(icons[i], IconSize, IconSize));
                 var iconSlot = item.AddChildToHorizontalBox(icon);
                 iconSlot?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
-                iconSlot?.SetPadding(new FMargin { Right = IconGap * scale });
+                iconSlot?.SetPadding(new FMargin { Right = IconGap });
             }
             item.AddChildToHorizontalBox(text)?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
 
-            var gap = i == 0 ? 0 : ItemGap * scale;
-            if (root is UVerticalBox list) list.AddChildToVerticalBox(item)?.SetPadding(new FMargin { Top = gap / 3 });
+            if (root is UVerticalBox list) list.AddChildToVerticalBox(item)?.SetPadding(new FMargin { Top = i == 0 ? 0 : RowGap });
             else if (root is UHorizontalBox line)
             {
                 var slot = line.AddChildToHorizontalBox(item);
-                slot?.SetPadding(new FMargin { Left = gap });
+                slot?.SetPadding(new FMargin { Left = i == 0 ? 0 : ItemGap });
                 slot?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
             }
             Fill(i);
@@ -131,7 +135,7 @@ public class StatsBar : ScreenWidget
             info.FontObject = font;
             info.TypefaceFontName = Typeface;
         }
-        info.Size = TextSize * scale;
+        info.Size = TextSize;
         var outline = info.OutlineSettings;
         outline.OutlineSize = 1;
         outline.OutlineColor = Ui.Color(0, 0, 0, 1);

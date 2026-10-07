@@ -3,6 +3,7 @@ using UE.Angelscript;
 using UE.CoreUObject;
 using UE.Engine;
 using UE.InputCore;
+using UE.OreUI;
 using UE.SlateCore;
 using UE.SpicewoodUI;
 using UE.SWSettings;
@@ -24,7 +25,7 @@ public class GameRow : UUserWidget
     public const string Button = "W_SettingsEntry_SubCollection";
     public const string Toggle = "W_SettingsEntry_Bool";
     public const string Slider = "W_SettingsEntry_Scalar";
-    public const string Dropdown = "W_SettingsEntry_Dropdown";
+    // Not W_SettingsEntry_Dropdown: made without a game setting, it crashes the game (a dropdown is a button row).
     public const string Keys = "W_SettingsListEntry_DualMappableInputs";
     const string RowBackground = "W_SettingsEntry_Background";
 
@@ -200,11 +201,12 @@ public class GameRow : UUserWidget
     void ShowKey(string name, FKey key)
     {
         if (GameUI.Find(entry, name) is not URebindableInputDisplayWidget display) return;
-        var none = key.KeyName.ToString() == "" || key.KeyName.ToString() == "None";
+        // Never name this "none": Unreal names ignore case, so a local called that corrupts memory.
+        var unbound = key.KeyName.ToString() == "" || key.KeyName.ToString() == "None";
         display.SingleInputAction?.SetKey(key);
-        display.SingleInputAction?.SetVisibility(none ? ESlateVisibility.Collapsed : ESlateVisibility.HitTestInvisible);
+        display.SingleInputAction?.SetVisibility(unbound ? ESlateVisibility.Collapsed : ESlateVisibility.HitTestInvisible);
         display.InvalidTextBlock?.SetText("-");
-        display.InvalidTextBlock?.SetVisibility(none ? ESlateVisibility.HitTestInvisible : ESlateVisibility.Collapsed);
+        display.InvalidTextBlock?.SetVisibility(unbound ? ESlateVisibility.HitTestInvisible : ESlateVisibility.Collapsed);
     }
 
     void ShowValue(double at)

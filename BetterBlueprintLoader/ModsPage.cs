@@ -807,8 +807,10 @@ public class ModsPage : UUserWidget
                 row?.SetSlider(setting.Min, setting.Max, setting.Step, UKismetStringLibrary.Conv_StringToDouble(value), setting.Percentage);
                 break;
             case SettingKind.Select:
-                row = Game(GameRow.Dropdown, index, "next", setting.Label);
-                row?.SetChoice(Choice(setting, value));
+                // A button row showing the chosen option, which clicking moves on: the game's dropdown row crashes the
+                // game without a game setting behind it.
+                row = Game(GameRow.Button, index, "next", setting.Label);
+                row?.SetButton(Choice(setting, value));
                 break;
             case SettingKind.UrlButton:
             case SettingKind.EventButton:
@@ -957,11 +959,11 @@ public class ModsPage : UUserWidget
                 int count = setting.Options.Count;
                 if (count == 0) break;
                 var next = ((UKismetStringLibrary.Conv_StringToInt(value) + 1) % count).ToString();
-                var dropdown = RowFor(index, "next");
-                inPlace = dropdown != null;
+                var choice = RowFor(index, "next");
+                inPlace = choice != null;
                 manager.SetValue(folder, setting.Id, next);
                 inPlace = false;
-                dropdown?.SetChoice(Choice(setting, next));
+                choice?.SetButton(Choice(setting, next));
                 break;
             case "url":
                 UKismetSystemLibrary.LaunchURL(setting.Url);

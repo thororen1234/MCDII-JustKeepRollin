@@ -54,8 +54,8 @@ public class ModActor : AActor, ISettingsEvents
     const string HotbarClass = "/Game/Spicewood/UI/HUD/Player/Hotbar/Solo/W_SinglePlayerHotbar.W_SinglePlayerHotbar_C";
     // The hotbar's lower bar (potion, XP bar, dodge): the overlay sits just past its right end.
     const string LowerBarClass = "/Game/Spicewood/UI/HUD/Player/Hotbar/Solo/W_Hotbar_Lower.W_Hotbar_Lower_C";
-    // Space between the lower bar and the overlay.
-    const float Gap = 12;
+    // Space between the lower bar and the overlay, in the hotbar's units.
+    const float Gap = 24;
     // How often the hotbar is looked for while it isn't found, and the numbers read.
     const float FindInterval = 1f;
     const float UpdateInterval = 0.25f;
@@ -64,7 +64,13 @@ public class ModActor : AActor, ISettingsEvents
     // A Soul Storm countdown longer than this isn't one.
     const double LongestStorm = 6 * 3600;
 
-    readonly List<bool> shownDisplays = new() { true, true, true, true, false, false };
+    // Which displays are on (plain fields: NeoRune lists are values, so setting an item of one in a field was lost).
+    bool showEmeralds = true;
+    bool showEchoShards = true;
+    bool showEnchantment = true;
+    bool showSoulStorm = true;
+    bool showXP;
+    bool showHealth;
     bool column;
     float size = 1;
 
@@ -78,8 +84,6 @@ public class ModActor : AActor, ISettingsEvents
     double nextUpdate;
     double nextStorm;
     string stormText = "";
-    // What the log last said about the Soul Storm, to log only changes.
-    string stormLogged = "";
 
     protected override void ReceiveBeginPlay()
     {
@@ -99,7 +103,7 @@ public class ModActor : AActor, ISettingsEvents
         if (now >= nextStorm)
         {
             nextStorm = now + StormInterval;
-            stormText = shownDisplays[SoulStorm] ? SoulStormText() : "";
+            stormText = showSoulStorm ? SoulStormText() : "";
         }
         if (now >= nextUpdate)
         {
@@ -143,60 +147,54 @@ public class ModActor : AActor, ISettingsEvents
             "/OreUI/UI/Icons/Effects/T_UI_Icon_Effect_ExperienceIncrease.T_UI_Icon_Effect_ExperienceIncrease",
             "/OreUI/UI/Icons/Effects/T_UI_Icon_Effect_HealthBoost.T_UI_Icon_Effect_HealthBoost",
         });
-        bar.Style(column, size);
+        bar.Style(column);
         bar.ShowAt(new FVector2D(), new FVector2D(), ScreenWidget.UnderGameUI);
-        Log.Write($"Overlay made next to {UKismetSystemLibrary.GetObjectName(anchor)} in {World.LevelName(this)}");
     }
 
-    /// <summary>Keeps the overlay just right of the lower bar, centred on it, and as faded as the hotbar.</summary>
+    /// <summary>
+    /// Keeps the overlay just right of the lower bar, as big as the hotbar is on screen (times the Size setting), and as
+    /// faded as it. Side by side it's centred on the bar; one under the other it stands on the bar's bottom, so it grows
+    /// up and stays on the screen.
+    /// </summary>
     void Follow()
     {
         if (bar == null) return;
         float opacity = 0;
         var geometry = new FGeometry();
-        var size = new FVector2D();
-        hiddenBy = "the lower bar is gone";
+        var barSize = new FVector2D();
         if (anchor != null && UKismetSystemLibrary.IsValid(anchor))
         {
             opacity = ShownOpacity(anchor);
             geometry = anchor.GetCachedGeometry();
-            size = USlateBlueprintLibrary.GetLocalSize(geometry);
-            if (opacity > 0.01f && size.X <= 0) hiddenBy = "the lower bar has no size";
+            barSize = USlateBlueprintLibrary.GetLocalSize(geometry);
         }
-        if (opacity <= 0.01f || size.X <= 0)
+        if (opacity <= 0.01f || barSize.X <= 0)
         {
             bar.SetVisibility(ESlateVisibility.Collapsed);
-            Note($"hidden: {hiddenBy}");
             return;
         }
         bar.SetVisibility(ESlateVisibility.HitTestInvisible);
         bar.SetRenderOpacity(opacity);
-        USlateBlueprintLibrary.LocalToViewport(this, geometry, new FVector2D { X = size.X, Y = size.Y / 2 }, out var pixel, out var position);
-        bar.SetAlignmentInViewport(new FVector2D { X = 0, Y = 0.5 });
-        bar.SetPositionInViewport(new FVector2D { X = position.X + Gap, Y = position.Y }, false);
-        Note($"shown at {position.X:0},{position.Y:0} (pixel {pixel.X:0},{pixel.Y:0}), bar {size.X:0}x{size.Y:0}, overlay {bar.GetDesiredSize().X:0}x{bar.GetDesiredSize().Y:0}, in viewport {bar.IsInViewport()}");
-    }
 
-    // Why the overlay was last hidden, and what the log last said about it (to log only changes, and not forever).
-    string hiddenBy = "";
-    string noted = "";
-    int notes;
-
-    void Note(string state)
-    {
-        // Positions change while the hotbar animates: compare without them.
-        var kind = UKismetStringLibrary.Contains(state, "shown", false, false) ? "shown" : state;
-        if (kind == noted || notes >= 40) return;
-        noted = kind;
-        notes++;
-        Log.Write($"Overlay {state}");
+        double heightShare = column ? 1 : 0.5;
+        USlateBlueprintLibrary.LocalToViewport(this, geometry, new FVector2D { X = barSize.X, Y = barSize.Y * heightShare }, out var pixel, out var position);
+        // The overlay is made in the hotbar's units: one of them is this many pixels on screen, and the overlay's own
+        // units are this many (the game's UI scale).
+        var hotbarScale = USlateBlueprintLibrary.GetAbsoluteSize(geometry).X / barSize.X;
+        var uiScale = position.X > 0 ? pixel.X / position.X : 1;
+        var scale = hotbarScale / uiScale * size;
+        var corner = new FVector2D { X = 0, Y = heightShare };
+        bar.SetRenderTransformPivot(corner);
+        bar.SetRenderScale(new FVector2D { X = scale, Y = scale });
+        bar.SetAlignmentInViewport(corner);
+        bar.SetPositionInViewport(new FVector2D { X = position.X + Gap * scale, Y = position.Y }, false);
     }
 
     /// <summary>
     /// How visible a widget is on screen: 0 when it or anything it's in is hidden, else its opacity times theirs (the
     /// hotbar fades in and out).
     /// </summary>
-    float ShownOpacity(UWidget start)
+    static float ShownOpacity(UWidget start)
     {
         float opacity = 1;
         UObject? at = start;
@@ -204,11 +202,7 @@ public class ModActor : AActor, ISettingsEvents
         {
             if (at is UWidget widget)
             {
-                if (!widget.IsVisible())
-                {
-                    hiddenBy = $"{UKismetSystemLibrary.GetObjectName(widget)} isn't visible";
-                    return 0;
-                }
+                if (!widget.IsVisible()) return 0;
                 // Not whether a screen is active: the hotbar's never is, even on screen.
                 opacity *= widget.GetRenderOpacity();
                 UObject? parent = widget.GetParent();
@@ -219,7 +213,6 @@ public class ModActor : AActor, ISettingsEvents
             else if (at is UWidgetTree) at = UKismetSystemLibrary.GetOuterObject(at);
             else break;
         }
-        if (opacity <= 0.01f) hiddenBy = "faded out";
         return opacity;
     }
 
@@ -238,14 +231,30 @@ public class ModActor : AActor, ISettingsEvents
                 else if (set is UATR_Health healthSet) health = healthSet;
             }
 
-        bar.Set(Emeralds, shownDisplays[Emeralds] && currency != null ? Number(currency.Emeralds.CurrentValue) : "");
-        bar.Set(EchoShards, shownDisplays[EchoShards] && currency != null ? Number(currency.SpringStone.CurrentValue) : "");
-        bar.Set(Enchantment, shownDisplays[Enchantment] && xp != null ? Number(xp.EnchantmentPoints.CurrentValue) : "");
-        bar.Set(SoulStorm, stormText);
-        bar.Set(XP, shownDisplays[XP] && xp != null
-            ? $"{Number(xp.XP.CurrentValue)} / {Number(xp.XPForNextLevel.CurrentValue)}" : "");
-        bar.Set(Health, shownDisplays[Health] && health != null
-            ? $"{Number(UKismetMathLibrary.FCeil(health.Health.CurrentValue))} / {Number(health.HealthMax.CurrentValue)}" : "");
+        // Empty hides a display: turned off, or its numbers aren't there (menus).
+        var emeralds = "";
+        var echoShards = "";
+        var enchantment = "";
+        var experience = "";
+        var hearts = "";
+        if (currency != null)
+        {
+            if (showEmeralds) emeralds = Number(currency.Emeralds.CurrentValue);
+            if (showEchoShards) echoShards = Number(currency.SpringStone.CurrentValue);
+        }
+        if (xp != null)
+        {
+            if (showEnchantment) enchantment = Number(xp.EnchantmentPoints.CurrentValue);
+            if (showXP) experience = $"{Number(xp.XP.CurrentValue)} / {Number(xp.XPForNextLevel.CurrentValue)}";
+        }
+        if (health != null && showHealth)
+            hearts = $"{Number(UKismetMathLibrary.FCeil(health.Health.CurrentValue))} / {Number(health.HealthMax.CurrentValue)}";
+        bar.Set(Emeralds, emeralds);
+        bar.Set(EchoShards, echoShards);
+        bar.Set(Enchantment, enchantment);
+        bar.Set(SoulStorm, showSoulStorm ? stormText : "");
+        bar.Set(XP, experience);
+        bar.Set(Health, hearts);
     }
 
     /// <summary>The area with a Soul Storm and the time it has left, or empty while there's none.</summary>
@@ -261,12 +270,6 @@ public class ModActor : AActor, ISettingsEvents
         }
         var left = StormTimeLeft();
         var area = areas.Count > 0 ? areas[0].TagName.ToString() : "";
-        var state = $"areas {areas.Count} {area}, countdown {(left > 0 ? Clock(left) : "none")}";
-        if (state != stormLogged)
-        {
-            stormLogged = state;
-            Log.Write($"Soul Storm: {state}");
-        }
         if (areas.Count == 0 && left <= 0) return "";
         var name = area != "" ? AreaName(area) : "Soul Storm";
         return left > 0 ? $"{name} {Clock(left)}" : name;
@@ -339,21 +342,27 @@ public class ModActor : AActor, ISettingsEvents
 
     public void OnSettingChanged(string id, string value)
     {
-        if (id == EmeraldsSetting) shownDisplays[Emeralds] = ModSettings.ToBool(value);
-        else if (id == EchoShardsSetting) shownDisplays[EchoShards] = ModSettings.ToBool(value);
-        else if (id == EnchantmentSetting) shownDisplays[Enchantment] = ModSettings.ToBool(value);
-        else if (id == SoulStormSetting) shownDisplays[SoulStorm] = ModSettings.ToBool(value);
-        else if (id == XPSetting) shownDisplays[XP] = ModSettings.ToBool(value);
-        else if (id == HealthSetting) shownDisplays[Health] = ModSettings.ToBool(value);
+        if (id == EmeraldsSetting) showEmeralds = ModSettings.ToBool(value);
+        else if (id == EchoShardsSetting) showEchoShards = ModSettings.ToBool(value);
+        else if (id == EnchantmentSetting) showEnchantment = ModSettings.ToBool(value);
+        else if (id == SoulStormSetting) showSoulStorm = ModSettings.ToBool(value);
+        else if (id == XPSetting) showXP = ModSettings.ToBool(value);
+        else if (id == HealthSetting) showHealth = ModSettings.ToBool(value);
         else if (id == LayoutSetting) column = ModSettings.ToInt(value) == 1;
         else if (id == SizeSetting) size = (float)UKismetMathLibrary.FClamp(ModSettings.ToNumber(value), 0.5, 2);
         else return;
+        Log.Write($"Setting {id} = {value}: emeralds {showEmeralds}, echo shards {showEchoShards}, enchantment {showEnchantment}, soul storm {showSoulStorm}, xp {showXP}, health {showHealth}");
         Restyle();
     }
 
     public void OnSettingsReset()
     {
-        for (int i = 0; i < shownDisplays.Count; i++) shownDisplays[i] = i < XP;
+        showEmeralds = true;
+        showEchoShards = true;
+        showEnchantment = true;
+        showSoulStorm = true;
+        showXP = false;
+        showHealth = false;
         column = false;
         size = 1;
         Restyle();
@@ -362,7 +371,7 @@ public class ModActor : AActor, ISettingsEvents
     /// <summary>Shows a settings change on the next tick.</summary>
     void Restyle()
     {
-        bar?.Style(column, size);
+        bar?.Style(column);
         nextUpdate = 0;
         nextStorm = 0;
     }

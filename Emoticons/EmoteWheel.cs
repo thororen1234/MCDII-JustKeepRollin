@@ -28,9 +28,12 @@ public class EmoteWheel : ScreenWidget
     // Smallest pill; longer names make it wider.
     const float SlotWidth = 120;
     const float SlotHeight = 30;
+    // How far the names at the ring's arrows sit from its edge, the same on all four sides whatever their length.
+    const float Inset = 32;
     // Widest a name gets: longer ones wrap, and a word too long to wrap (CALCULATED) shrinks. The ones at the sides stay
-    // between the ring's arrow and its edge even when pointed at (1.2 times as big): Radius + 1.2 * LabelWidth / 2 < Disc / 2.
-    const float LabelWidth = 140;
+    // clear of the ring's arrow (about 270 from the middle) even when pointed at (1.2 times as big, growing inward):
+    // Disc / 2 - Inset - 1.2 * LabelWidth > 270.
+    const float LabelWidth = 120;
     // How far the mouse must be from the middle (in UI units) to point at an emote.
     const float DeadZone = Middle / 2;
     // How far a controller's stick must be pushed (0 to 1) to point at an emote.
@@ -214,13 +217,18 @@ public class EmoteWheel : ScreenWidget
                 buttons[i].SetVisibility(ESlateVisibility.Collapsed);
                 continue;
             }
-            // On the ring's marks: its arrows (top, right, bottom, left) and its corners.
+            // On the ring's marks: its arrows (top, right, bottom, left) and its corners. The names at the arrows go by
+            // their outer edge, so short and long ones leave the same space to the ring's edge, and grow inward when
+            // pointed at; the ones at the corners are centred on their mark.
             var angle = -90 + i * 360.0 / PerPage;
-            slots[i].SetPosition(new FVector2D
-            {
-                X = Size / 2 + Radius * UKismetMathLibrary.DegCos(angle),
-                Y = Size / 2 + Radius * UKismetMathLibrary.DegSin(angle),
-            });
+            var x = UKismetMathLibrary.DegCos(angle);
+            var y = UKismetMathLibrary.DegSin(angle);
+            bool arrow = i % 2 == 0;
+            var reach = arrow ? Disc / 2 - Inset : Radius;
+            var edge = arrow ? new FVector2D { X = 0.5 + x / 2, Y = 0.5 + y / 2 } : new FVector2D { X = 0.5f, Y = 0.5f };
+            slots[i].SetPosition(new FVector2D { X = Size / 2 + reach * x, Y = Size / 2 + reach * y });
+            slots[i].SetAlignment(edge);
+            buttons[i].SetRenderTransformPivot(edge);
             buttons[i].SetIndex(page * PerPage + i);
             buttons[i].SetVisibility(ESlateVisibility.Visible);
             labels[i].SetText(EmoteData.Title(page * PerPage + i));
@@ -229,7 +237,8 @@ public class EmoteWheel : ScreenWidget
         hovered = -1;
         litSlot = -1;
         ring?.SetScalarParameterValue("Divisions", PerPage);
-        ring?.SetScalarParameterValue("Selected", 0);
+        // No part lit: with 0 the frame is drawn thicker along the first part (the top of the left side).
+        ring?.SetScalarParameterValue("Selected", -1);
         title?.SetText("Emotes");
         pageText?.SetText(Pages() > 1 ? $"Page {page + 1} of {Pages()}" : "");
     }
@@ -273,10 +282,14 @@ public class EmoteWheel : ScreenWidget
             var shrink = UGameplayStatics.SpawnObject(Unreal.ClassOf<UScaleBox>(), tree) as UScaleBox;
             if (button == null || label == null || fit == null || shrink == null) return false;
             button.Setup(mod);
-            // On the game's ring, the names are text only: the ring shows which is pointed at.
+            // On the game's ring, the names are text only: the ring shows which is pointed at. Their boxes fit the text
+            // (no smallest pill), so a name placed by its edge has its text at that edge.
             if (native) button.SetStyle(Invisible());
-            fit.SetMinDesiredWidth(SlotWidth);
-            fit.SetMinDesiredHeight(SlotHeight);
+            else
+            {
+                fit.SetMinDesiredWidth(SlotWidth);
+                fit.SetMinDesiredHeight(SlotHeight);
+            }
             // Long names go on two lines, so the ones at the sides stay on the ring. Wrapping at a set width (not
             // AutoWrapText) makes a single word too long to wrap measure wider than the box, so the scale box shrinks it.
             fit.SetMaxDesiredWidth(LabelWidth);
@@ -292,9 +305,8 @@ public class EmoteWheel : ScreenWidget
             fitSlot?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
             var slot = canvas.AddChildToCanvas(button);
             if (slot == null) return false;
-            // Sized to the name, centred on its spot on the ring.
+            // Sized to the name; Layout places it.
             slot.SetAutoSize(true);
-            slot.SetAlignment(new FVector2D { X = 0.5f, Y = 0.5f });
             buttons.Add(button);
             labels.Add(label);
             slots.Add(slot);

@@ -4,14 +4,15 @@ using UE.Angelscript;
 using UE.CommonUI;
 using UE.Engine;
 using UE.SlateCore;
+using UE.SpicewoodUI;
 using UE.UMG;
 
 namespace DragSalvage;
 
 /// <summary>
 /// In the salvage screen, hold the mouse on an item and drag across others to select them all, instead of clicking
-/// each one. On a controller, hold A on an item and move off it: every item moved onto is selected until A is pressed
-/// again.
+/// each one. On a controller, hold A on an item and move off it: every item moved onto is selected until A is let go
+/// (or, if letting go can't be seen, pressed again).
 /// </summary>
 public class ModActor : AActor
 {
@@ -43,6 +44,18 @@ public class ModActor : AActor
     // The item the mod clicked, and when: the click bounces its focus too, but that isn't A.
     UCommonButtonBase? clicked;
     int clickedAt = -1;
+    // Letting go of A. The game's key-rebinding "press any key" catcher sees keys before the menu does and reports
+    // each one as it comes up, wherever the focus is, so it's on while a drag runs. While it's on it holds the
+    // controller's buttons back from the menu (the stick may still move the focus).
+    UPressAnyKeyInputPreProcessorWrapper? keys;
+    bool keysOn;
+    double keysActiveAt;
+    // Set by the catcher, handled in the tick (turning the catcher off from its own callback isn't safe).
+    bool padReleased;
+    // The catcher heard nothing and the focus hasn't moved for a while: off for the rest of this drag, which then
+    // ends with a press of A.
+    bool keysGaveUp;
+    const double KeysTimeout = 3;
     // What the controller drag saw, saved from the tick (saving from the game's input callbacks isn't safe).
     readonly List<string> notes = [];
     double savedAt;
@@ -59,7 +72,11 @@ public class ModActor : AActor
         savedAt = World.RealTime(this);
     }
 
-    protected override void ReceiveEndPlay(EEndPlayReason reason) => SaveNotes();
+    protected override void ReceiveEndPlay(EEndPlayReason reason)
+    {
+        SetKeys(false);
+        SaveNotes();
+    }
 
     protected override void ReceiveBeginPlay()
     {
@@ -121,6 +138,7 @@ public class ModActor : AActor
         // Moved off the item before A came up: A is held, and the drag is on.
         if (!padDragging) Note($"drag started from {Name(padStart)}");
         padDragging = true;
+        keysActiveAt = World.RealTime(this);
         Note($"focus moved to {Name(slot)}");
         if (padDragged.Contains(slot)) return;
         padDragged.Add(slot);
@@ -172,6 +190,48 @@ public class ModActor : AActor
         padDragging = false;
         padDragged.Clear();
         padStopped = null;
+        padReleased = false;
+        keysGaveUp = false;
+    }
+
+    /// <summary>Turns the key catcher on or off.</summary>
+    void SetKeys(bool on)
+    {
+        if (on == keysOn) return;
+        if (on && keys == null)
+        {
+            keys = UPressAnyKeyInputPreProcessorWrapper.Create();
+            if (keys == null)
+            {
+                Note("no key catcher: drags end with a press of A");
+                keysGaveUp = true;
+                return;
+            }
+            keys.OnKeySelected += OnPadKeyUp;
+            keys.OnKeySelectionCanceled += OnPadCancelUp;
+        }
+        if (keys == null) return;
+        keys.TogglePreprocessor(on);
+        keysOn = on;
+        keysActiveAt = World.RealTime(this);
+        Note($"key catcher {(on ? "on" : "off")}");
+    }
+
+    /// <summary>A key came up (the catcher reports B and Escape through OnPadCancelUp instead).</summary>
+    void OnPadKeyUp(UE.InputCore.FKey SelectedKey)
+    {
+        var key = SelectedKey.KeyName.ToString();
+        keysActiveAt = World.RealTime(this);
+        Note($"key up: {key}");
+        if (key == "Gamepad_FaceButton_Bottom" || key == "Virtual_Accept") padReleased = true;
+    }
+
+    /// <summary>B came up: it ends the drag too, since the catcher kept the menu from seeing it.</summary>
+    void OnPadCancelUp()
+    {
+        keysActiveAt = World.RealTime(this);
+        Note("key up: cancel");
+        padReleased = true;
     }
 
     public bool Active => panelShown;
@@ -214,6 +274,17 @@ public class ModActor : AActor
             if (padStart != null) Note("focus left the items: drag ended");
             ResetPad();
         }
+        if (padReleased)
+        {
+            if (padDragging) Note("A up: drag ended");
+            ResetPad();
+        }
+        if (keysOn && World.RealTime(this) - keysActiveAt >= KeysTimeout)
+        {
+            Note("key catcher heard nothing: drag now ends with a press of A");
+            keysGaveUp = true;
+        }
+        SetKeys(padDragging && !keysGaveUp && shown);
         if (World.RealTime(this) - savedAt >= 2) SaveNotes();
         if (pending == null) return;
         var slot = pending;
