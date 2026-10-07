@@ -25,9 +25,7 @@ namespace CustomCapes;
     Description = "Reads the cape files again, to see changes you just saved in your image editor.")]
 [ModSetting.Keybind(ExportSetting, "Save Game Cape", Default = DefaultExportKey,
     Description = "Saves the game's cape you wear as a PNG in the Capes folder's _game folder, to start your own from.")]
-#pragma warning disable NR0001
 public class ModActor : AActor, ISettingsEvents
-#pragma warning restore NR0001
 {
     const string LightingSetting = "character_lighting";
     const string NextSetting = "next_key";
@@ -83,6 +81,17 @@ public class ModActor : AActor, ISettingsEvents
         SetTickableWhenPaused(true);
     }
 
+    /// <summary>
+    /// Whether another copy of the mod runs in this level (a second mod loader spawns one too). Two copies each put their
+    /// own cape back every second, undoing the cape picked in the other: the newcomer leaves.
+    /// </summary>
+    bool HasTwin()
+    {
+        foreach (var other in World.FindAll(this, Unreal.ClassOf<ModActor>()))
+            if (other != null && other != this && UKismetSystemLibrary.IsValid(other)) return true;
+        return false;
+    }
+
     public void OnKeybindChanged(string id, FKey key, FKey secondaryKey)
     {
         if (id == NextSetting)
@@ -134,6 +143,12 @@ public class ModActor : AActor, ISettingsEvents
     {
         if (!started)
         {
+            if (HasTwin())
+            {
+                Log.Write("Another copy of Custom Capes is running in this level (is a second mod loader installed?): this one stopped");
+                K2_DestroyActor();
+                return;
+            }
             started = true;
             capes = CapeSwapper.Create(this);
             capes?.SetCharacterLighting(lighting);

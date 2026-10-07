@@ -10,11 +10,7 @@ namespace Emoticons;
 /// </summary>
 [ModSetting.Keybind(WheelKeySetting, "Emote Wheel Key", Default = DefaultWheelKey,
     Description = "Hold it to open the emote wheel, point at an emote and let go to play it. Tap it to keep the wheel open and click an emote.")]
-#pragma warning disable NR0001
-#pragma warning disable NR0001
 public class ModActor : AActor, ISettingsEvents
-#pragma warning restore NR0001
-#pragma warning restore NR0001
 {
     const string WheelKeySetting = "wheel_key";
     const string DefaultWheelKey = "B";

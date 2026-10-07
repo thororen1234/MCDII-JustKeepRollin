@@ -24,9 +24,7 @@ namespace CustomSkins;
     Description = "Saves the skin picked in the game's menu as a PNG in the Skins folder's _game folder, to start your own from.")]
 [ModSetting.Keybind(InfoSetting, "Show Info", Default = DefaultInfoKey,
     Description = "Writes what the mod knows about your character to the log and shows it. If something doesn't work, press it in game, press Copy and send the log.")]
-#pragma warning disable NR0001
 public class ModActor : AActor, ISettingsEvents
-#pragma warning restore NR0001
 {
     const string NextSetting = "next_key";
     const string ReloadSetting = "reload_key";
@@ -125,9 +123,30 @@ public class ModActor : AActor, ISettingsEvents
     static bool Pressed(APlayerController controller, FKey key, FKey secondary) =>
         controller.WasInputKeyJustPressed(key) || controller.WasInputKeyJustPressed(secondary);
 
+    /// <summary>
+    /// Whether another copy of the mod runs in this level (a second mod loader spawns one too). Two copies each put their
+    /// own skin back every second, undoing the skin picked in the other: the newcomer leaves.
+    /// </summary>
+    bool HasTwin()
+    {
+        foreach (var other in World.FindAll(this, Unreal.ClassOf<ModActor>()))
+            if (other != null && other != this && UKismetSystemLibrary.IsValid(other)) return true;
+        return false;
+    }
+
     public override void ReceiveTick(float deltaSeconds)
     {
-        if (!started) { started = true; skins = SkinSwapper.Create(this); }
+        if (!started)
+        {
+            if (HasTwin())
+            {
+                Log.Write("Another copy of Custom Skins is running in this level (is a second mod loader installed?): this one stopped");
+                K2_DestroyActor();
+                return;
+            }
+            started = true;
+            skins = SkinSwapper.Create(this);
+        }
         skins?.UpdateFace();
         var now = World.RealTime(this);
         if (now >= nextCheck)
