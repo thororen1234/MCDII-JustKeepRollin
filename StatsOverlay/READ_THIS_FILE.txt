@@ -1,7 +1,7 @@
 STATS OVERLAY
 =============
 
-See your Emeralds, Echo Shards, Enchantment Points and the Soul Storm going on at all times, just right of the hotbar!
+See your Emeralds, Echo Shards, Enchantment Points, Soul Storms, and more!
 
 It uses the game's own icons and font, updates live, and fades in and out with the hotbar, so it's hidden in menus and
 on loading screens.
@@ -35,7 +35,7 @@ INSTALL
 
 4. Extract this zip into ~mods, so the files end up in: Paks\~mods\StatsOverlay
 
-5. Remove any other mod that shows currency next to the hotbar (like CurrencyHUD), or both will show in the same place.
+5. Remove any other mod that shows currency next to the hotbar, or both will show in the same place.
 
 UNINSTALL
 ---------
