@@ -161,6 +161,7 @@ public class ModActor : AActor, ISettingsEvents
             skins?.SetLayers(layerMode);
         }
         skins?.UpdateFace();
+        skins?.WatchPreviews();
         var now = World.RealTime(this);
         if (now >= nextCheck)
         {

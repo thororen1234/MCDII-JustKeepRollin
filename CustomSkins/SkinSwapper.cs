@@ -89,6 +89,8 @@ public class SkinSwapper : UObject
     List<AActor> dressed = new();
     // The menu characters already logged: the game puts its skin back on them often, and they get it again.
     List<AActor> announced = new();
+    // Per menu character, its body's material when WatchPreviews last saw it dressed.
+    Dictionary<AActor, UMaterialInterface> previewMaterials = new();
     List<UMaterialInstanceDynamic> instances = new();
     List<FName> parameters = new();
     List<UTexture?> oldSkins = new();
@@ -261,10 +263,65 @@ public class SkinSwapper : UObject
         }
     }
 
-    /// <summary>Puts the skin on an actor's skin materials.</summary>
+    /// <summary>
+    /// Puts the skin on the menus' copies of the character (the inventory's, the lobby's, the main menu's) the frame they
+    /// show or the game puts its own skin back on them, rather than on the next check. Call every frame.
+    /// </summary>
+    public void WatchPreviews()
+    {
+        if (owner == null || Skin == 0 || worn == null) return;
+        WatchPreviews(Unreal.ClassOf<UE.InventorySystem.ACharacterPreviewActor>());
+        WatchPreviews(Unreal.ClassOf<UE.MainMenu.APartyPreviewActor>());
+    }
+
+    void WatchPreviews(TSubclassOf<AActor> previewClass)
+    {
+        foreach (var actor in World.FindAll(owner!, previewClass))
+        {
+            if (actor == null || actor.GetComponentByClass(Unreal.ClassOf<USkeletalMeshComponent>()) is not USkeletalMeshComponent body) continue;
+            // Nothing changed since it was last looked at: the usual case, checked cheaply.
+            var material = body.GetMaterial(0);
+            if (material == null || (previewMaterials.ContainsKey(actor) && previewMaterials[actor] == material)) continue;
+            if (material is UMaterialInstanceDynamic own && instances.Contains(own))
+            {
+                int at = instances.IndexOf(own);
+                if (own.K2_GetTextureParameterValue(parameters[at]) != worn) own.SetTextureParameterValue(parameters[at], worn);
+            }
+            else if (UKismetSystemLibrary.GetPathName(body.GetSkinnedAsset()) == PlayerBody)
+            {
+                if (dressed.Contains(actor)) DressMaterials(actor);
+                else
+                {
+                    Dress(actor);
+                    if (!announced.Contains(actor))
+                    {
+                        announced.Add(actor);
+                        Log.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)} as it showed");
+                    }
+                }
+            }
+            var now = body.GetMaterial(0);
+            if (now != null) previewMaterials[actor] = now;
+        }
+    }
+
+    /// <summary>Puts the skin on an actor's skin materials, its second layer and its moving face.</summary>
     void Dress(AActor actor)
     {
         dressed.Add(actor);
+        DressMaterials(actor);
+        if (worn != null) Layers(actor, worn);
+        // Eyes and mouth that move with the face, on the body, unless another mod gives it its own.
+        if (face == null || !movingFaces.ContainsKey(Skin) || !movingFaces[Skin] || FaceParts.HasOthers(actor)) return;
+        if (actor.GetComponentByClass(Unreal.ClassOf<USkeletalMeshComponent>()) is not USkeletalMeshComponent body) return;
+        if (UKismetSystemLibrary.GetPathName(body.GetSkinnedAsset()) != PlayerBody) return;
+        var skin = body.GetMaterial(0);
+        if (skin != null) face.Build(actor, body, skin);
+    }
+
+    /// <summary>Puts the skin on an actor's skin materials (only the ones that don't have it).</summary>
+    void DressMaterials(AActor actor)
+    {
         dressingCopy = actor != character;
         // Armor and the cape are child actors: only the actor's own meshes (body, face) wear the skin.
         foreach (var component in actor.K2_GetComponentsByClass(Unreal.ClassOf<USkinnedMeshComponent>()))
@@ -289,13 +346,6 @@ public class SkinSwapper : UObject
                 added.Add(instance);
             }
         }
-        if (worn != null) Layers(actor, worn);
-        // Eyes and mouth that move with the face, on the body, unless another mod gives it its own.
-        if (face == null || !movingFaces.ContainsKey(Skin) || !movingFaces[Skin] || FaceParts.HasOthers(actor)) return;
-        if (actor.GetComponentByClass(Unreal.ClassOf<USkeletalMeshComponent>()) is not USkeletalMeshComponent body) return;
-        if (UKismetSystemLibrary.GetPathName(body.GetSkinnedAsset()) != PlayerBody) return;
-        var skin = body.GetMaterial(0);
-        if (skin != null) face.Build(actor, body, skin);
     }
 
     /// <summary>Builds the second layer of a skin on an actor's body, in the body's skin material, if it's on.</summary>
@@ -373,6 +423,7 @@ public class SkinSwapper : UObject
             if (UKismetSystemLibrary.IsValid(components[i]) && components[i].GetMaterial(slots[i]) == added[i])
                 components[i].SetMaterial(slots[i], originals[i]);
         dressed.Clear();
+        previewMaterials.Clear();
         instances.Clear();
         parameters.Clear();
         oldSkins.Clear();
@@ -439,12 +490,8 @@ public class SkinSwapper : UObject
         return file;
     }
 
-    /// <summary>Moves the eyes and mouth with the face, and the second layer with the body. Call every frame.</summary>
-    public void UpdateFace()
-    {
-        face?.Update();
-        layers?.Update();
-    }
+    /// <summary>Moves the eyes and mouth with the face. Call every frame.</summary>
+    public void UpdateFace() => face?.Update();
 
     /// <summary>Whether a skin colours any of the moving eyes' and mouth's shapes: their pupils, and the mouths.</summary>
     bool MovingFace(UTextureRenderTarget2D target, float pixel) =>

@@ -75,16 +75,14 @@ public class CapeSwapper : UObject
     UTexture? gameCape;
     UTexture? gameMres;
 
-    // The Apply Character Lighting setting turned off: capes drawn on linear textures, which come out brighter and washed
-    // out. On (the default), they're drawn on sRGB ones, which the game lights like the character's own skin.
-    bool linear;
-
     ACharacter? character;
     UTexture? worn;
     // Set when the picked PNG couldn't be read, so Check doesn't try (and log) again every second.
     bool missing;
     // The menu characters already logged: the game puts its cape back on them often, and they get it again.
     List<AActor> announced = new();
+    // Which skeletal meshes seen on the menus' characters are capes (the game swaps the mesh of none of them).
+    Dictionary<USkeletalMeshComponent, bool> capeMeshes = new();
     // The cape materials changed, with what they had before: the game's own material instances are changed in place,
     // other materials get an instance of ours.
     List<UMaterialInstanceDynamic> instances = new();
@@ -135,17 +133,6 @@ public class CapeSwapper : UObject
         UGameplayStatics.SaveGameToSlot(settings, SettingsSlot, 0);
         Apply();
         if (!missing) Log.Write(number == 0 ? "Wearing the game's cape" : $"Wearing {number}.png ({Available().Count} capes in {Folder()})");
-    }
-
-    /// <summary>The Apply Character Lighting setting: whether capes are drawn on sRGB textures.</summary>
-    public void SetCharacterLighting(bool on)
-    {
-        if (linear == !on) return;
-        linear = !on;
-        // The capes' textures are made again in the other format. The old ones stay in ours: copies of the character
-        // can still wear them.
-        capes.Clear();
-        Apply();
     }
 
     /// <summary>Reads the PNGs again, to see changes made to them while playing.</summary>
@@ -231,6 +218,48 @@ public class CapeSwapper : UObject
             announced.Add(actor);
             Log.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)}");
         }
+    }
+
+    /// <summary>
+    /// Puts a custom cape on the menus' copies of the character (the inventory's, the lobby's, the main menu's) the frame
+    /// they show or the game puts its own cape back on them, rather than on the next check. Call every frame.
+    /// </summary>
+    public void WatchPreviews()
+    {
+        if (owner == null || Cape == 0 || worn == null) return;
+        WatchPreviews(Unreal.ClassOf<UE.InventorySystem.ACharacterPreviewActor>());
+        WatchPreviews(Unreal.ClassOf<UE.MainMenu.APartyPreviewActor>());
+    }
+
+    void WatchPreviews(TSubclassOf<AActor> previewClass)
+    {
+        foreach (var actor in World.FindAll(owner!, previewClass))
+        {
+            if (actor == null || actor == character || Wears(actor) || Body(actor) == null) continue;
+            Dress(actor);
+            if (announced.Contains(actor)) continue;
+            announced.Add(actor);
+            Log.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)} as it showed");
+        }
+    }
+
+    /// <summary>
+    /// Whether an actor already wears the cape: on every one of the game's capes it shows, or on the mod's own cape.
+    /// Cheap enough for every frame: which meshes are capes is remembered.
+    /// </summary>
+    bool Wears(AActor actor)
+    {
+        bool wearsOne = false;
+        foreach (var component in actor.K2_GetComponentsByClass(Unreal.ClassOf<USkeletalMeshComponent>()))
+        {
+            if (component is not USkeletalMeshComponent mesh || ownCapes.Contains(mesh) || !mesh.IsVisible()) continue;
+            if (!capeMeshes.ContainsKey(mesh)) capeMeshes[mesh] = UKismetSystemLibrary.GetPathName(mesh.GetSkinnedAsset()) == CapeMesh;
+            if (!capeMeshes[mesh]) continue;
+            wearsOne = true;
+            if (mesh.GetMaterial(0) is not UMaterialInstanceDynamic instance || !instances.Contains(instance)
+                || instance.K2_GetTextureParameterValue(TextureParameter) != worn) return false;
+        }
+        return wearsOne || OwnCape(actor) != null;
     }
 
     /// <summary>
@@ -407,7 +436,8 @@ public class CapeSwapper : UObject
         var file = File(number.ToString());
         if (file == null) return null;
         var target = capes.ContainsKey(number) ? capes[number] : null;
-        target = Convert(file, target, !linear);
+        // sRGB, which the game lights like the character's own skin (linear ones come out brighter and washed out).
+        target = Convert(file, target, true);
         if (target != null) capes[number] = target;
         return target;
     }

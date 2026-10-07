@@ -15,9 +15,6 @@ namespace CustomCapes;
 /// F3. Only you see them: everyone else sees the cape picked in the game's own menu. The keys are settings in
 /// BetterBlueprintLoader's Mods tab.
 /// </summary>
-[ModSetting.Heading("Visuals")]
-[ModSetting.Toggle(LightingSetting, "Apply Character Lighting", Default = true,
-    Description = "Makes custom capes react to light and shadows just like your character. Turn this off if your custom capes look too dark.")]
 [ModSetting.Heading("Keys")]
 [ModSetting.Keybind(NextSetting, "Next Cape", Default = DefaultNextKey,
     Description = "Wears the next cape in the Capes folder; after the last one, the game's cape again.")]
@@ -27,7 +24,6 @@ namespace CustomCapes;
     Description = "Saves the game's cape you wear as a PNG in the Capes folder's _game folder, to start your own from.")]
 public class ModActor : AActor, ISettingsEvents
 {
-    const string LightingSetting = "character_lighting";
     const string NextSetting = "next_key";
     const string ReloadSetting = "reload_key";
     const string ExportSetting = "export_key";
@@ -64,8 +60,6 @@ public class ModActor : AActor, ISettingsEvents
     // The Custom tab, while the row is in the item grid's place.
     CustomTab? tab;
     bool tabbed;
-    // The Apply Character Lighting setting; BetterBlueprintLoader only sends it when it isn't on its default.
-    bool lighting = true;
 
     // The keys, each setting's two (the second empty unless set in the Mods tab).
     FKey nextKey = new FKey { KeyName = DefaultNextKey };
@@ -119,21 +113,9 @@ public class ModActor : AActor, ISettingsEvents
         nextKey2 = new FKey();
         reloadKey2 = new FKey();
         exportKey2 = new FKey();
-        SetLighting(true);
     }
 
-    public void OnSettingChanged(string id, string value)
-    {
-        if (id == LightingSetting) SetLighting(value == "true");
-    }
-
-    void SetLighting(bool on)
-    {
-        lighting = on;
-        if (capes == null) return;
-        capes.SetCharacterLighting(on);
-        row?.Refresh();
-    }
+    public void OnSettingChanged(string id, string value) { }
     public void OnButtonPressed(string id) { }
 
     static bool Pressed(APlayerController controller, FKey key, FKey secondary) =>
@@ -151,8 +133,8 @@ public class ModActor : AActor, ISettingsEvents
             }
             started = true;
             capes = CapeSwapper.Create(this);
-            capes?.SetCharacterLighting(lighting);
         }
+        capes?.WatchPreviews();
         var now = World.RealTime(this);
         if (now >= nextCheck)
         {
