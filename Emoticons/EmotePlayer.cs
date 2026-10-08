@@ -193,7 +193,7 @@ public class EmotePlayer : UObject
         }, false) as UPoseableMeshComponent;
         if (pose == null)
         {
-            Log.Write("Couldn't add a poseable mesh to the character");
+            FileLog.Write("Couldn't add a poseable mesh to the character");
             return false;
         }
         pose.K2_AttachToComponent(mesh, FName.None, EAttachmentRule.SnapToTarget, EAttachmentRule.SnapToTarget, EAttachmentRule.SnapToTarget, false);
@@ -224,7 +224,7 @@ public class EmotePlayer : UObject
         if (bones[Head] == FName.None || bones[LeftArm] == FName.None || bones[RightArm] == FName.None
             || (bones[Pelvis] == FName.None && bones[Pelvis + 1] == FName.None))
         {
-            Log.Write("Couldn't find the head, arms and pelvis in this skeleton: emotes are off");
+            FileLog.Write("Couldn't find the head, arms and pelvis in this skeleton: emotes are off");
             return false;
         }
         return true;

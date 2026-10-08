@@ -87,12 +87,12 @@ public class ModManager : AActor
             if (settings.GettingSettings)
             {
                 Notice = $"{Short(settings.Starting)} crashed the game while getting its saved settings, so it's turned off. Reset its settings in Settings > Mods, then turn it back on.";
-                Log.Write($"{settings.Starting} crashed the game while getting its saved settings: turned off");
+                FileLog.Write($"{settings.Starting} crashed the game while getting its saved settings: turned off");
             }
             else
             {
                 Notice = $"{Short(settings.Starting)} crashed the game while starting, so it's turned off. Turn it back on in Settings > Mods.";
-                Log.Write($"{settings.Starting} crashed the game while starting: turned off");
+                FileLog.Write($"{settings.Starting} crashed the game while starting: turned off");
             }
             settings.Starting = "";
             settings.GettingSettings = false;
@@ -114,14 +114,14 @@ public class ModManager : AActor
             if (folder == "")
             {
                 settings.PlainPage = true;
-                Log.Write("The game crashed while the Mods page was being made in the game's look: it's made plain from now on");
+                FileLog.Write("The game crashed while the Mods page was being made in the game's look: it's made plain from now on");
             }
             else
             {
                 if (!settings.PlainPages.Contains(folder)) settings.PlainPages.Add(folder);
                 var line = $"{folder} crashed the game while its settings page was being made, so that page is made plain now. Retry Game Look in Settings > Mods tries again.";
                 Notice = Notice == "" ? line : Notice + "\n" + line;
-                Log.Write($"The game crashed while {folder}'s settings page was being made in the game's look: it's made plain from now on");
+                FileLog.Write($"The game crashed while {folder}'s settings page was being made in the game's look: it's made plain from now on");
             }
             Save();
         }
@@ -184,7 +184,7 @@ public class ModManager : AActor
         for (int i = 0; i < Mods.Count; i++) Start(i);
         Save();
         Started = true;
-        Log.Write($"Started {Running()} of {Mods.Count} mods in {World.LevelName(this)} (game {UGameVersion.BuildVersion()})");
+        FileLog.Write($"Started {Running()} of {Mods.Count} mods in {World.LevelName(this)} (game {UGameVersion.BuildVersion()})");
         if (InMenu()) ShowMenuLabel();
         menus?.Refresh();
     }
@@ -338,7 +338,7 @@ public class ModManager : AActor
             }
         for (int i = 0; i < Mods.Count; i++)
             if (States[i] == "Running") Start(i);
-        Log.Write($"Restarted {count} mods");
+        FileLog.Write($"Restarted {count} mods");
         Stopped = "";
         menus?.Refresh();
     }
@@ -462,7 +462,7 @@ public class ModManager : AActor
         if (notes.Count == 0) return;
         var lines = notes;
         notes.Clear();
-        Log.WriteAll(lines);
+        FileLog.WriteAll(lines);
     }
 
     protected override void ReceiveEndPlay(EEndPlayReason reason) => Flush();

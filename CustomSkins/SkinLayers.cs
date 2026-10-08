@@ -177,7 +177,7 @@ public class SkinLayers : UObject
         reported.Add(actor);
         var covered = "";
         for (int r = 0; r < RegionCount; r++) covered += coverFlags[first + r] ? "1" : "0";
-        Log.Write($"Layers on {UKismetSystemLibrary.GetObjectName(actor)}: covered {covered} (hat, jacket, right arm, left arm, right leg, left leg) by {seen}");
+        FileLog.Write($"Layers on {UKismetSystemLibrary.GetObjectName(actor)}: covered {covered} (hat, jacket, right arm, left arm, right leg, left leg) by {seen}");
     }
 
     /// <summary>The first of the '|' separated bone names the body has, or None.</summary>

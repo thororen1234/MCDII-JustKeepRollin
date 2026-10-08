@@ -70,7 +70,7 @@ public class ModActor : AActor
     void SaveNotes()
     {
         if (notes.Count == 0) return;
-        Log.WriteAll(notes);
+        FileLog.WriteAll(notes);
         notes.Clear();
         savedAt = World.RealTime(this);
     }

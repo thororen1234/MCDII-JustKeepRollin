@@ -1,0 +1,6 @@
+<Project>
+  <!-- Every mod logs to a file of its own on this PC (Shared/FileLog.cs), never to a save slot: those sync to the cloud. -->
+  <ItemGroup Condition="'$(NeoRuneSdkRoot)' != ''">
+    <Compile Include="$(MSBuildThisFileDirectory)Shared\FileLog.cs" Link="Shared\FileLog.cs" />
+  </ItemGroup>
+</Project>

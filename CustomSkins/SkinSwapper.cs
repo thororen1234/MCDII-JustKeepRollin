@@ -140,7 +140,7 @@ public class SkinSwapper : UObject
         if (settings == null) return;
         settings.Skin = number;
         UGameplayStatics.SaveGameToSlot(settings, SettingsSlot, 0);
-        Log.Write(number == 0 ? "Wearing the game's skin" : $"Wearing {number}.png ({Available().Count} skins in {Folder()})");
+        FileLog.Write(number == 0 ? "Wearing the game's skin" : $"Wearing {number}.png ({Available().Count} skins in {Folder()})");
         Apply();
     }
 
@@ -216,7 +216,7 @@ public class SkinSwapper : UObject
         worn = Load(Skin);
         if (worn == null)
         {
-            Log.Write($"Couldn't read {Skin}.png in {Folder()}");
+            FileLog.Write($"Couldn't read {Skin}.png in {Folder()}");
             reported = character;
             return;
         }
@@ -225,7 +225,7 @@ public class SkinSwapper : UObject
             Dress(character);
             if (instances.Count == 0)
             {
-                Log.Write("Found no skin material on the character: press the Show Info key (F9 unless changed) in game and send the log");
+                FileLog.Write("Found no skin material on the character: press the Show Info key (F9 unless changed) in game and send the log");
                 reported = character;
                 return;
             }
@@ -261,7 +261,7 @@ public class SkinSwapper : UObject
             Dress(actor);
             if (announced.Contains(actor)) continue;
             announced.Add(actor);
-            Log.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)} ({instances.Count - before} materials)");
+            FileLog.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)} ({instances.Count - before} materials)");
         }
     }
 
@@ -315,7 +315,7 @@ public class SkinSwapper : UObject
                     if (!announced.Contains(actor))
                     {
                         announced.Add(actor);
-                        Log.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)} as it showed");
+                        FileLog.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)} as it showed");
                     }
                 }
             }
@@ -506,7 +506,7 @@ public class SkinSwapper : UObject
                 return target;
         }
         // The PNG as it is still works, without the face.
-        Log.Write($"Couldn't put the face on {number}.png: wearing it as it is");
+        FileLog.Write($"Couldn't put the face on {number}.png: wearing it as it is");
         return file;
     }
 
@@ -692,7 +692,7 @@ public class SkinSwapper : UObject
         var player = World.Player(owner) as ACharacter;
         if (player == null || player.Mesh == null || player.Mesh.GetMaterial(0) is not UMaterialInstanceDynamic body)
         {
-            Log.Write("No character to save the skin of");
+            FileLog.Write("No character to save the skin of");
             return;
         }
         var skin = body.K2_GetTextureParameterValue(GameParameter);
@@ -706,18 +706,18 @@ public class SkinSwapper : UObject
             }
         if (skin == null)
         {
-            Log.Write("The character's material has no skin texture");
+            FileLog.Write("The character's material has no skin texture");
             return;
         }
         var name = UKismetSystemLibrary.GetObjectName(skin);
         Export(skin, name);
         if (mres != null) Export(mres, name + "_MRES");
-        Log.Write($"Saved {name}.png to {Folder()}_game/");
+        FileLog.Write($"Saved {name}.png to {Folder()}_game/");
         // And the custom skin as worn, face included, to check what the character really has on.
         if (Skin != 0 && worn != null)
         {
             Export(worn, $"worn_{Skin}");
-            Log.Write($"Saved worn_{Skin}.png ({UKismetSystemLibrary.GetObjectName(worn)}) to {Folder()}_game/");
+            FileLog.Write($"Saved worn_{Skin}.png ({UKismetSystemLibrary.GetObjectName(worn)}) to {Folder()}_game/");
         }
     }
 
@@ -838,7 +838,7 @@ public class SkinSwapper : UObject
         if (player == null)
         {
             info.Add("No character");
-            Log.WriteAll(info);
+            FileLog.WriteAll(info);
             return;
         }
         info.Add($"Character: {UKismetSystemLibrary.GetPathName(player)}");
@@ -862,7 +862,7 @@ public class SkinSwapper : UObject
         else foreach (var entry in paperdoll.SlotMap)
             info.Add($"Cosmetic slot {entry.Key.TagName} = {entry.Value.TypeTag.TagName}");
 
-        Log.WriteAll(info);
+        FileLog.WriteAll(info);
     }
 
     void LogMeshes(AActor actor, string indent)

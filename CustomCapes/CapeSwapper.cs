@@ -132,7 +132,7 @@ public class CapeSwapper : UObject
         settings.Cape = number;
         UGameplayStatics.SaveGameToSlot(settings, SettingsSlot, 0);
         Apply();
-        if (!missing) Log.Write(number == 0 ? "Wearing the game's cape" : $"Wearing {number}.png ({Available().Count} capes in {Folder()})");
+        if (!missing) FileLog.Write(number == 0 ? "Wearing the game's cape" : $"Wearing {number}.png ({Available().Count} capes in {Folder()})");
     }
 
     /// <summary>Reads the PNGs again, to see changes made to them while playing.</summary>
@@ -182,7 +182,7 @@ public class CapeSwapper : UObject
             if (Cape != 0)
             {
                 missing = true;
-                Log.Write($"Couldn't read {Cape}.png in {Folder()}: a cape is 64x32 or 22x17 (Java), or 32x16 (the game's layout)");
+                FileLog.Write($"Couldn't read {Cape}.png in {Folder()}: a cape is 64x32 or 22x17 (Java), or 32x16 (the game's layout)");
             }
             return;
         }
@@ -218,7 +218,7 @@ public class CapeSwapper : UObject
             Dress(actor);
             if (announced.Contains(actor)) continue;
             announced.Add(actor);
-            Log.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)}");
+            FileLog.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)}");
         }
     }
 
@@ -242,7 +242,7 @@ public class CapeSwapper : UObject
             Dress(actor);
             if (announced.Contains(actor)) continue;
             announced.Add(actor);
-            Log.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)} as it showed");
+            FileLog.Write($"Dressed the menu's character {UKismetSystemLibrary.GetPathName(actor)} as it showed");
         }
     }
 
@@ -670,7 +670,7 @@ public class CapeSwapper : UObject
                 }
         if (material == null)
         {
-            Log.Write("The character wears none of the game's capes to save");
+            FileLog.Write("The character wears none of the game's capes to save");
             return;
         }
         var cape = material.K2_GetTextureParameterValue(TextureParameter);
@@ -684,13 +684,13 @@ public class CapeSwapper : UObject
             }
         if (cape == null)
         {
-            Log.Write("The cape's material has no texture");
+            FileLog.Write("The cape's material has no texture");
             return;
         }
         var name = UKismetSystemLibrary.GetObjectName(cape);
         Export(cape, name);
         if (mres != null) Export(mres, name + "_MRES");
-        Log.Write($"Saved {name}.png to {Folder()}_game/");
+        FileLog.Write($"Saved {name}.png to {Folder()}_game/");
     }
 
     void Export(UTexture texture, string name)

@@ -44,7 +44,7 @@ public class ModActor : AActor, ISettingsEvents
 
     protected override void ReceiveBeginPlay()
     {
-        Log.Write($"Emoticons loaded in {World.LevelName(this)}");
+        FileLog.Write($"Emoticons loaded in {World.LevelName(this)}");
     }
 
     public override void ReceiveTick(float deltaSeconds)

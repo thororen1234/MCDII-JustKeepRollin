@@ -198,7 +198,7 @@ public class GearLook : UObject
         }
         UGameplayStatics.SaveGameToSlot(settings, SettingsSlot, 0);
         Check();
-        Log.Write($"{KindTitle(kind)}: {(look == "" ? "the game's look" : look)}");
+        FileLog.Write($"{KindTitle(kind)}: {(look == "" ? "the game's look" : look)}");
     }
 
     /// <summary>Hides a kind on its own, or shows it again with its look. Remembered for next time.</summary>
@@ -208,7 +208,7 @@ public class GearLook : UObject
         settings.Hidden[kind] = !settings.Hidden[kind];
         UGameplayStatics.SaveGameToSlot(settings, SettingsSlot, 0);
         Check();
-        Log.Write($"{KindTitle(kind)} {(settings.Hidden[kind] ? "hidden" : "shown")}");
+        FileLog.Write($"{KindTitle(kind)} {(settings.Hidden[kind] ? "hidden" : "shown")}");
     }
 
     /// <summary>Hides all the armor, whatever its look, or shows it again.</summary>
@@ -354,8 +354,8 @@ public class GearLook : UObject
             loggedSlots = true;
             var kinds = "";
             for (int i = 0; i < KindCount; i++) kinds += $"{KindTitle(i)}={(hasSlot[i] ? slots[i].TagName.ToString() : "-")} ({worn[i]}), ";
-            Log.Write($"Inventory slots: {names}");
-            Log.Write($"Gear: {kinds}{settings.Found.Count} found, {collected.Count} collected");
+            FileLog.Write($"Inventory slots: {names}");
+            FileLog.Write($"Gear: {kinds}{settings.Found.Count} found, {collected.Count} collected");
         }
     }
 
@@ -460,7 +460,7 @@ public class GearLook : UObject
             if (!reported.Contains(report))
             {
                 reported.Add(report);
-                Log.Write($"{report}: {mine.Count} worn parts, {lookParts.Count} look parts, {unpaired.Count} not on the same socket, {added} added");
+                FileLog.Write($"{report}: {mine.Count} worn parts, {lookParts.Count} look parts, {unpaired.Count} not on the same socket, {added} added");
             }
         }
     }
@@ -682,7 +682,7 @@ public class GearLook : UObject
         if (actor == null)
         {
             failed.Add(tag);
-            Log.Write($"No gear actor found for {tag}");
+            FileLog.Write($"No gear actor found for {tag}");
             return null;
         }
         templates[tag] = actor;
@@ -693,7 +693,7 @@ public class GearLook : UObject
         foreach (var component in actor.K2_GetComponentsByClass(Unreal.ClassOf<UMeshComponent>()))
             if (component is UMeshComponent part && IsPart(part))
                 names += $"{UKismetSystemLibrary.GetObjectName(part)} on {part.GetAttachSocketName()} ({UKismetSystemLibrary.GetObjectName(MeshOf(part))}), ";
-        Log.Write($"Gear actor for {tag}: {UKismetSystemLibrary.GetPathName(actor)}: {names}");
+        FileLog.Write($"Gear actor for {tag}: {UKismetSystemLibrary.GetPathName(actor)}: {names}");
         return actor;
     }
 

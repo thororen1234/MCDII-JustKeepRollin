@@ -118,7 +118,7 @@ public class CustomTab : UObject
         iconOn = null;
         chosen = false;
         Show();
-        if (tabs == null) Log.Write("No tab bar in the Collectibles item grid: the Custom tab can't be added");
+        if (tabs == null) FileLog.Write("No tab bar in the Collectibles item grid: the Custom tab can't be added");
         return true;
     }
 
@@ -134,7 +134,7 @@ public class CustomTab : UObject
         tabs.GetRegisteredTabInfo(tag, out var registered);
         if (!registered && !tabs.RegisterPseudoTab(tag, Label))
         {
-            Log.Write("Couldn't add the Custom tab to the Collectibles screen");
+            FileLog.Write("Couldn't add the Custom tab to the Collectibles screen");
             tabs = null;
             return;
         }
@@ -175,12 +175,12 @@ public class CustomTab : UObject
             if (first == null && entry is UAS_SpicewoodInventoryGridEntry found && found.IsVisible()) first = found;
         if (first == null)
         {
-            Log.Write($"Couldn't wake the Collectibles picture: no item shown ({entries.Count} entries)");
+            FileLog.Write($"Couldn't wake the Collectibles picture: no item shown ({entries.Count} entries)");
             return;
         }
         first.SetUserFocus(World.PlayerController(this));
         first.OnButtonHoveredChanged(first);
-        Log.Write($"Woke the Collectibles picture: focused and hovered {UKismetSystemLibrary.GetObjectName(first)} (focus {first.HasAnyUserFocus()}, hovered {first.IsHovered()})");
+        FileLog.Write($"Woke the Collectibles picture: focused and hovered {UKismetSystemLibrary.GetObjectName(first)} (focus {first.HasAnyUserFocus()}, hovered {first.IsHovered()})");
     }
 
     void Show()
@@ -229,7 +229,7 @@ public class CustomTab : UObject
         if (!registered || button == null || button == iconOn) return;
         if (button is not UAS_SpicewoodButtonTabActionMinimal minimal || minimal.CategoryIcon == null)
         {
-            if (!reported) Log.Write($"The Custom tab's button is a {ClassName(button)}: no icon put on it");
+            if (!reported) FileLog.Write($"The Custom tab's button is a {ClassName(button)}: no icon put on it");
             reported = true;
             return;
         }

@@ -108,7 +108,7 @@ public class ModActor : AActor, ISettingsEvents
         {
             if (HasTwin())
             {
-                Log.Write("Another copy of Better Armor & Weapons is running in this level (is a second mod loader installed?): this one stopped");
+                FileLog.Write("Another copy of Better Armor & Weapons is running in this level (is a second mod loader installed?): this one stopped");
                 K2_DestroyActor();
                 return;
             }
@@ -192,7 +192,7 @@ public class ModActor : AActor, ISettingsEvents
             if (tab != null && tab.Attach(grid, menu, false))
             {
                 tabbed = true;
-                Log.Write("Armor & Weapons section added to the Collectibles screen's Custom tab");
+                FileLog.Write("Armor & Weapons section added to the Collectibles screen's Custom tab");
                 return;
             }
         }
@@ -202,10 +202,10 @@ public class ModActor : AActor, ISettingsEvents
         if (parent is UVerticalBox list)
         {
             list.AddChildToVerticalBox(menu)?.SetPadding(new FMargin { Top = 8 });
-            Log.Write($"Armor & Weapons section added to the Collectibles screen, in {UKismetSystemLibrary.GetObjectName(list)}");
+            FileLog.Write($"Armor & Weapons section added to the Collectibles screen, in {UKismetSystemLibrary.GetObjectName(list)}");
             return;
         }
-        Log.Write($"No place for the Armor & Weapons section in the Collectibles screen (item grid {(grid == null ? "not found" : "not in a list")})");
+        FileLog.Write($"No place for the Armor & Weapons section in the Collectibles screen (item grid {(grid == null ? "not found" : "not in a list")})");
     }
 
     /// <summary>The first widget with a name under a widget, or null.</summary>

@@ -127,7 +127,7 @@ public class ModActor : AActor, ISettingsEvents
         {
             if (HasTwin())
             {
-                Log.Write("Another copy of Custom Capes is running in this level (is a second mod loader installed?): this one stopped");
+                FileLog.Write("Another copy of Custom Capes is running in this level (is a second mod loader installed?): this one stopped");
                 K2_DestroyActor();
                 return;
             }
@@ -234,7 +234,7 @@ public class ModActor : AActor, ISettingsEvents
             {
                 floating = false;
                 tabbed = true;
-                Log.Write("Cape section added to the Collectibles screen's Custom tab");
+                FileLog.Write("Cape section added to the Collectibles screen's Custom tab");
                 return;
             }
         }
@@ -245,13 +245,13 @@ public class ModActor : AActor, ISettingsEvents
         {
             floating = false;
             list.AddChildToVerticalBox(row)?.SetPadding(new FMargin { Top = 8 });
-            Log.Write($"Cape row added to the Collectibles screen, in {UKismetSystemLibrary.GetObjectName(list)}");
+            FileLog.Write($"Cape row added to the Collectibles screen, in {UKismetSystemLibrary.GetObjectName(list)}");
             return;
         }
         floating = true;
         row.ShowAt(new FVector2D(), new FVector2D(), ScreenWidget.AboveGameUI);
         FollowGrid();
-        Log.Write($"Cape row shown over the Collectibles screen (item grid {(grid == null ? "not found" : "not in a list")})");
+        FileLog.Write($"Cape row shown over the Collectibles screen (item grid {(grid == null ? "not found" : "not in a list")})");
     }
 
     /// <summary>The first widget with a name under a widget, or null.</summary>

@@ -214,7 +214,7 @@ public class GearPromptRow : UUserWidget
         var styleClass = Unreal.LoadClass<UCommonButtonStyle>(MenuStyle);
         if (buttonClass == null)
         {
-            Log.Write("The game's text button isn't in the game: no Hide and Look options");
+            FileLog.Write("The game's text button isn't in the game: no Hide and Look options");
             return false;
         }
 
@@ -246,7 +246,7 @@ public class GearPromptRow : UUserWidget
             var label = FindText(button);
             if (label == null)
             {
-                Log.Write("The game's text button has no text block: no Hide and Look options");
+                FileLog.Write("The game's text button has no text block: no Hide and Look options");
                 return false;
             }
             labels.Add(label);
@@ -260,7 +260,7 @@ public class GearPromptRow : UUserWidget
         var grid = FindGrid(contextMenu.ContextMenu?.WidgetTree?.RootWidget);
         if (grid == null)
         {
-            Log.Write("The game's right-click menu has no grid to add the Hide and Look options to");
+            FileLog.Write("The game's right-click menu has no grid to add the Hide and Look options to");
             return false;
         }
         int rowsUsed = 0;
@@ -268,7 +268,7 @@ public class GearPromptRow : UUserWidget
             if (grid.GetChildAt(c)?.Slot is UGridSlot taken && taken.Row + 1 > rowsUsed) rowsUsed = taken.Row + 1;
         var cell = grid.AddChildToGrid(this, rowsUsed, 0);
         cell?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Fill);
-        Log.Write($"Hide and Look options added to the game's right-click menu (row {rowsUsed})");
+        FileLog.Write($"Hide and Look options added to the game's right-click menu (row {rowsUsed})");
         return true;
     }
 
