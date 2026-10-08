@@ -510,8 +510,12 @@ public class SkinSwapper : UObject
         return file;
     }
 
-    /// <summary>Moves the eyes and mouth with the face. Call every frame.</summary>
-    public void UpdateFace() => face?.Update();
+    /// <summary>Moves the eyes and mouth with the face, and hides the second layer under armor. Call every frame.</summary>
+    public void UpdateFace()
+    {
+        face?.Update();
+        if (owner != null) layers?.UpdateCover(owner);
+    }
 
     /// <summary>Whether a skin colours any of the moving eyes' and mouth's shapes: their pupils, and the mouths.</summary>
     bool MovingFace(UTextureRenderTarget2D target, float pixel) =>

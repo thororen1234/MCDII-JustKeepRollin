@@ -212,6 +212,8 @@ public class CapeSwapper : UObject
             if (actor == null || actor == character) continue;
             // Other players: they keep their own capes.
             if (actor is APawn pawn && pawn.PlayerState != null) continue;
+            // Gear: a helmet's or boots' actor has a copy of the body to hang its parts on, but it isn't a character.
+            if (actor is UE.SWCoreGameplay.AGearActor) continue;
             if (Body(actor) == null) continue;
             Dress(actor);
             if (announced.Contains(actor)) continue;
@@ -226,6 +228,7 @@ public class CapeSwapper : UObject
     /// </summary>
     public void WatchPreviews()
     {
+        ShowOwnCapes();
         if (owner == null || Cape == 0 || worn == null) return;
         WatchPreviews(Unreal.ClassOf<UE.InventorySystem.ACharacterPreviewActor>());
         WatchPreviews(Unreal.ClassOf<UE.MainMenu.APartyPreviewActor>());
@@ -374,6 +377,22 @@ public class CapeSwapper : UObject
         var lighting = body.LightingChannels;
         cape.SetLightingChannels(lighting.bChannel0, lighting.bChannel1, lighting.bChannel2);
         for (int i = 0; i < cape.GetNumMaterials(); i++) Cover(cape, i);
+    }
+
+    /// <summary>
+    /// Shows the mod's own capes while the body they hang on shows: the main menu's characters wear no cape and the
+    /// game hides what hangs where one would go.
+    /// </summary>
+    void ShowOwnCapes()
+    {
+        foreach (var cape in ownCapes)
+        {
+            if (cape == null || !UKismetSystemLibrary.IsValid(cape)) continue;
+            var body = cape.GetAttachParent();
+            bool show = body != null && body.bVisible && !body.bHiddenInGame;
+            if (cape.bVisible != show) cape.SetVisibility(show, false);
+            if (cape.bHiddenInGame == show) cape.SetHiddenInGame(!show, false);
+        }
     }
 
     USkeletalMeshComponent? OwnCape(AActor actor)

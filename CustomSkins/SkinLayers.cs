@@ -30,6 +30,24 @@ public class SkinLayers : UObject
     const float LayerOut = 0.25f;
     // The game's arms' width in pixels (Java's slim arms; Steve's are 4).
     const float ArmWidth = 3;
+    // The layers' parts, by the armor that covers them.
+    const int Head = 0;
+    const int Jacket = 1;
+    const int RightArm = 2;
+    const int LeftArm = 3;
+    const int RightLeg = 4;
+    const int LeftLeg = 5;
+    const int RegionCount = 6;
+    // The body's sockets the game puts armor pieces on: the helmet, the chestplate and its shoulder pads, and the
+    // leggings' and boots' legs.
+    const string HelmetSocket = "J_Head_Socket";
+    const string ChestSocket = "J_ShouldersSocket";
+    const string RightShoulderSocket = "J_R_Shoulder_Socket";
+    const string LeftShoulderSocket = "J_L_Shoulder_Socket";
+    const string RightLegSocket = "J_R_Leg_Socket";
+    const string LeftLegSocket = "J_L_Leg_Socket";
+    // How often armor is looked at, in seconds.
+    const double CoverInterval = 0.1;
     const string HeadBones = "J_Head|J_Neck|head";
     const string BodyBones = "J_Shoulders|J_Spine|spine_03|spine_02|spine";
 
@@ -57,8 +75,17 @@ public class SkinLayers : UObject
     FVector acrossOut;
     FVector downOut;
     FVector outward;
-    // The parts built, each attached to the bone it follows.
+    // The parts built, each attached to the bone it follows, with the actor it's on and its region.
     List<UProceduralMeshComponent> parts = new();
+    List<AActor> owners = new();
+    List<int> regions = new();
+    // UpdateCover's next look (real time), and per actor looked at its six covered flags.
+    double coverAt;
+    List<AActor> coverActors = new();
+    List<bool> coverFlags = new();
+    // What's attached to the body being looked at (a field: an out list), and the characters already logged.
+    List<USceneComponent> children = new();
+    List<AActor> reported = new();
 
     public static SkinLayers? Create(UObject owner) => UGameplayStatics.SpawnObject(Unreal.ClassOf<SkinLayers>(), owner) as SkinLayers;
 
@@ -74,14 +101,83 @@ public class SkinLayers : UObject
         if (width <= 0 || pixels.Count < width * width) return;
         bool blocks = mode == Blocks;
 
-        Part(actor, body, material, Find(body, HeadBones), 32, 0, -4, 4, -4, 4, 24, 32, HatOut, blocks);
-        Part(actor, body, material, Find(body, BodyBones), 16, 32, -4, 4, -2, 2, 12, 24, LayerOut, blocks);
+        Part(actor, body, material, Find(body, HeadBones), Head, 32, 0, -4, 4, -4, 4, 24, 32, HatOut, blocks);
+        Part(actor, body, material, Find(body, BodyBones), Jacket, 16, 32, -4, 4, -2, 2, 12, 24, LayerOut, blocks);
         // The game's arms are slim, 3 pixels wide (its body mesh, SK_Player_Master), so the sleeves have the slim
         // layout: a 4 pixel wide sleeve stood a pixel off the arm's outside.
-        Part(actor, body, material, Find(body, "J_R_Arm|upperarm_r"), 40, 32, -4 - ArmWidth, -4, -2, 2, 12, 24, LayerOut, blocks);
-        Part(actor, body, material, Find(body, "J_L_Arm|upperarm_l"), 48, 48, 4, 4 + ArmWidth, -2, 2, 12, 24, LayerOut, blocks);
-        Part(actor, body, material, Find(body, "J_R_Leg|thigh_r"), 0, 32, -4, 0, -2, 2, 0, 12, LayerOut, blocks);
-        Part(actor, body, material, Find(body, "J_L_Leg|thigh_l"), 0, 48, 0, 4, -2, 2, 0, 12, LayerOut, blocks);
+        Part(actor, body, material, Find(body, "J_R_Arm|upperarm_r"), RightArm, 40, 32, -4 - ArmWidth, -4, -2, 2, 12, 24, LayerOut, blocks);
+        Part(actor, body, material, Find(body, "J_L_Arm|upperarm_l"), LeftArm, 48, 48, 4, 4 + ArmWidth, -2, 2, 12, 24, LayerOut, blocks);
+        Part(actor, body, material, Find(body, "J_R_Leg|thigh_r"), RightLeg, 0, 32, -4, 0, -2, 2, 0, 12, LayerOut, blocks);
+        Part(actor, body, material, Find(body, "J_L_Leg|thigh_l"), LeftLeg, 0, 48, 0, 4, -2, 2, 0, 12, LayerOut, blocks);
+        coverAt = 0;
+    }
+
+    /// <summary>
+    /// Call every frame: hides each part of the layers while armor shows over it (a helmet over the hat, a chestplate
+    /// over the jacket and sleeves, its shoulder pads over a sleeve, leggings or boots over a leg), and shows it again when
+    /// the armor is hidden or taken off. Armor is told by its pieces shown on the body's sockets, so hiding it any way
+    /// counts. Looked at a few times a second.
+    /// </summary>
+    public void UpdateCover(UObject context)
+    {
+        if (parts.Count == 0) return;
+        var now = World.RealTime(context);
+        if (now < coverAt) return;
+        coverAt = now + CoverInterval;
+        coverActors.Clear();
+        coverFlags.Clear();
+        for (int i = 0; i < parts.Count; i++)
+        {
+            var part = parts[i];
+            var actor = owners[i];
+            if (part == null || actor == null || !UKismetSystemLibrary.IsValid(part) || !UKismetSystemLibrary.IsValid(actor)) continue;
+            int at = coverActors.IndexOf(actor);
+            if (at < 0)
+            {
+                at = coverActors.Count;
+                coverActors.Add(actor);
+                Covered(actor, part.GetAttachParent());
+            }
+            bool show = !coverFlags[at * RegionCount + regions[i]];
+            if (part.bVisible != show) part.SetVisibility(show, false);
+        }
+    }
+
+    /// <summary>
+    /// Adds an actor's six covered flags (one per region) to coverFlags: the armor pieces shown on its body. Everything
+    /// attached to the body counts, whoever it belongs to: other mods show armor with meshes of their own actors.
+    /// </summary>
+    void Covered(AActor actor, USceneComponent? body)
+    {
+        int first = coverFlags.Count;
+        for (int r = 0; r < RegionCount; r++) coverFlags.Add(false);
+        if (body == null) return;
+        body.GetChildrenComponents(false, out children);
+        bool report = !reported.Contains(actor);
+        var seen = "";
+        foreach (var child in children)
+        {
+            if (child is not UStaticMeshComponent piece || !piece.IsVisible()) continue;
+            var socket = piece.GetAttachSocketName().ToString();
+            if (report) seen += $"{UKismetSystemLibrary.GetObjectName(piece.StaticMesh)} on {socket} ({UKismetSystemLibrary.GetObjectName(piece.GetOwner())}), ";
+            if (socket == HelmetSocket) coverFlags[first + Head] = true;
+            else if (socket == ChestSocket)
+            {
+                coverFlags[first + Jacket] = true;
+                coverFlags[first + RightArm] = true;
+                coverFlags[first + LeftArm] = true;
+            }
+            else if (socket == RightShoulderSocket) coverFlags[first + RightArm] = true;
+            else if (socket == LeftShoulderSocket) coverFlags[first + LeftArm] = true;
+            else if (socket == RightLegSocket) coverFlags[first + RightLeg] = true;
+            else if (socket == LeftLegSocket) coverFlags[first + LeftLeg] = true;
+        }
+        if (!report) return;
+        // Test logging: what covers each character's layers, once per character.
+        reported.Add(actor);
+        var covered = "";
+        for (int r = 0; r < RegionCount; r++) covered += coverFlags[first + r] ? "1" : "0";
+        Log.Write($"Layers on {UKismetSystemLibrary.GetObjectName(actor)}: covered {covered} (hat, jacket, right arm, left arm, right leg, left leg) by {seen}");
     }
 
     /// <summary>The first of the '|' separated bone names the body has, or None.</summary>
@@ -94,9 +190,9 @@ public class SkinLayers : UObject
 
     /// <summary>
     /// A body part's layer: a box from (x0, y0, z0) to (x1, y1, z1) in pixels, its texture at (u, v) in the Java layout
-    /// (the box's faces laid out around it as Java lays them), following a bone.
+    /// (the box's faces laid out around it as Java lays them), following a bone, in a region armor can cover.
     /// </summary>
-    void Part(AActor actor, USkinnedMeshComponent body, UMaterialInterface material, FName bone, int u, int v,
+    void Part(AActor actor, USkinnedMeshComponent body, UMaterialInterface material, FName bone, int region, int u, int v,
         float x0, float x1, float y0, float y1, float z0, float z1, float flatOut, bool blocks)
     {
         if (bone == FName.None) return;
@@ -132,6 +228,8 @@ public class SkinLayers : UObject
         var part = actor.AddComponentByClass(Unreal.ClassOf<UProceduralMeshComponent>(), true, identity, false) as UProceduralMeshComponent;
         if (part == null) return;
         parts.Add(part);
+        owners.Add(actor);
+        regions.Add(region);
         // On the bone itself, so the engine moves it with the animation in the same frame (placing it from a tick lags a
         // frame behind).
         part.K2_AttachToComponent(body, bone, EAttachmentRule.SnapToTarget, EAttachmentRule.SnapToTarget, EAttachmentRule.SnapToTarget, false);
@@ -257,20 +355,37 @@ public class SkinLayers : UObject
         foreach (var part in parts)
             if (part != null && UKismetSystemLibrary.IsValid(part)) part.K2_DestroyComponent(part);
         parts.Clear();
+        owners.Clear();
+        regions.Clear();
     }
 
     /// <summary>Removes the layers built on one actor (and forgets parts already gone with their actors).</summary>
     public void ClearOn(AActor actor)
     {
-        var others = new List<UProceduralMeshComponent>();
-        foreach (var part in parts)
+        var keptParts = new List<UProceduralMeshComponent>();
+        var keptOwners = new List<AActor>();
+        var keptRegions = new List<int>();
+        for (int i = 0; i < parts.Count; i++)
         {
+            var part = parts[i];
             if (part == null || !UKismetSystemLibrary.IsValid(part)) continue;
-            if (part.GetOwner() == actor) part.K2_DestroyComponent(part);
-            else others.Add(part);
+            if (owners[i] == actor) part.K2_DestroyComponent(part);
+            else
+            {
+                keptParts.Add(part);
+                keptOwners.Add(owners[i]);
+                keptRegions.Add(regions[i]);
+            }
         }
         parts.Clear();
-        foreach (var part in others) parts.Add(part);
+        owners.Clear();
+        regions.Clear();
+        for (int i = 0; i < keptParts.Count; i++)
+        {
+            parts.Add(keptParts[i]);
+            owners.Add(keptOwners[i]);
+            regions.Add(keptRegions[i]);
+        }
     }
 
     /// <summary>The bone's transform in the body's space, in the reference pose.</summary>
