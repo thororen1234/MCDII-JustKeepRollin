@@ -25,6 +25,8 @@ public class ModManager : AActor
     const string ModInfoName = "ModInfo";
     // The shared mod interface lives in this folder, which BetterBlueprintLoader provides: it's not a mod.
     const string InterfacesFolder = "BlueprintLoader";
+    // The save slots NeoRune's Log kept each mod's log in: NeoRune_<Mod>.
+    const string OldLogPrefix = "NeoRune_";
     // Mods start once the player's character is there and set up: many do their work once, when they start, on the
     // character (its stats, its abilities). Levels without one (the main menu) start them after the longest wait.
     const float WaitInterval = 0.25f;
@@ -181,12 +183,27 @@ public class ModManager : AActor
             States.Add("");
             Times.Add(0);
         }
+        DeleteOldLogs();
         for (int i = 0; i < Mods.Count; i++) Start(i);
         Save();
         Started = true;
         FileLog.Write($"Started {Running()} of {Mods.Count} mods in {World.LevelName(this)} (game {UGameVersion.BuildVersion()})");
         if (InMenu()) ShowMenuLabel();
         menus?.Refresh();
+    }
+
+    /// <summary>
+    /// Deletes the logs mods built with NeoRune kept in save slots (NeoRune_&lt;Mod&gt;), this loader's own too: the Xbox app
+    /// version syncs every save slot to the cloud, and those logs only ever grew. Mods log to files of their own now, and
+    /// a mod that doesn't log at all would never delete its old one itself. Settings slots are left alone.
+    /// </summary>
+    void DeleteOldLogs()
+    {
+        var slots = new List<string>();
+        slots.Add(OldLogPrefix + Unreal.ModName);
+        foreach (var folder in Folders) slots.Add(OldLogPrefix + folder);
+        foreach (var slot in slots)
+            if (UGameplayStatics.DoesSaveGameExist(slot, 0)) UGameplayStatics.DeleteGameInSlot(slot, 0);
     }
 
     // Found by Find: mods with a ModActor (the others only have a ModInfo).
