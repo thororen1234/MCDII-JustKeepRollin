@@ -82,7 +82,6 @@ public class GearMenu : ScreenWidget
     List<int> kinds = new();
     List<string> looks = new();
     List<UTexture2D?> textures = new();
-    List<string> tips = new();
 
     /// <summary>A section not made yet: keep it in a field, then <see cref="Setup"/> it (which loads the game's assets).</summary>
     public static GearMenu? Create(UObject context) =>
@@ -176,14 +175,13 @@ public class GearMenu : ScreenWidget
         kinds.Clear();
         looks.Clear();
         textures.Clear();
-        tips.Clear();
         for (int kind = 0; kind < GearLook.KindCount; kind++)
         {
             if (!gear.HasSlot(kind) || (only >= 0 && kind != only)) continue;
             var worn = gear.Worn(kind);
-            AddChoice(kind, "", worn != "" ? gear.Icon(worn) : null, worn != "" ? gear.Title(worn) : "The game's look");
-            AddChoice(kind, GearLook.Hidden, null, $"No {GearLook.KindTitle(kind).ToLower()}");
-            foreach (var item in gear.Choices(kind, everything)) AddChoice(kind, item, gear.Icon(item), gear.Title(item));
+            AddChoice(kind, "", worn != "" ? gear.Icon(worn) : null);
+            AddChoice(kind, GearLook.Hidden, null);
+            foreach (var item in gear.Choices(kind, everything)) AddChoice(kind, item, gear.Icon(item));
         }
         shown = gear.Signature();
 
@@ -209,7 +207,7 @@ public class GearMenu : ScreenWidget
                 place = 0;
                 if (!AddRow(kinds[i])) return;
             }
-            Add(kinds[i], looks[i], textures[i], tips[i], place);
+            Add(kinds[i], looks[i], textures[i], place);
             place++;
         }
         // The popup's way out, under its list (made once: the list is what's made again).
@@ -233,12 +231,11 @@ public class GearMenu : ScreenWidget
         Highlight();
     }
 
-    void AddChoice(int kind, string look, UTexture2D? texture, string tip)
+    void AddChoice(int kind, string look, UTexture2D? texture)
     {
         kinds.Add(kind);
         looks.Add(look);
         textures.Add(texture);
-        tips.Add(tip);
     }
 
     /// <summary>Call regularly while the section shows: makes the rows again when the gear worn or found changed.</summary>
@@ -275,6 +272,16 @@ public class GearMenu : ScreenWidget
         if (kind != CloseBox) gear?.Select(kind, look);
         Highlight();
         if (popup) Hide();
+    }
+
+    /// <summary>Esc or B closes the popup without picking (the keys come up from the focused box).</summary>
+    public override FEventReply OnKeyDown(FGeometry geometry, FKeyEvent e)
+    {
+        if (!popup) return UWidgetBlueprintLibrary.Unhandled();
+        var name = UKismetInputLibrary.GetKey(e).KeyName.ToString();
+        if (name != "Escape" && name != "Gamepad_FaceButton_Right" && name != "Virtual_Back") return UWidgetBlueprintLibrary.Unhandled();
+        Hide();
+        return UWidgetBlueprintLibrary.Handled();
     }
 
     /// <summary>
@@ -328,7 +335,7 @@ public class GearMenu : ScreenWidget
         return true;
     }
 
-    void Add(int kind, string look, UTexture2D? texture, string tip, int place)
+    void Add(int kind, string look, UTexture2D? texture, int place)
     {
         var tree = WidgetTree;
         if (tree == null || grids.Count == 0) return;
@@ -341,7 +348,6 @@ public class GearMenu : ScreenWidget
         if (box == null || button == null || layers == null || image == null || mark == null) return;
         button.Setup(this, kind, look);
         button.SetStyle(BoxStyle(false));
-        button.SetToolTipText(tip);
         box.AddChild(button);
         var content = button.AddChild(layers) as UButtonSlot;
         content?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Fill);

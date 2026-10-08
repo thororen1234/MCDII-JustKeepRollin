@@ -62,10 +62,9 @@ public static class FileLog
         }
         if (node == null)
         {
-            // The log NeoRune kept in a save slot before, which synced to the cloud: gone with the save API, so the cloud
-            // forgets it too.
-            var oldSlot = "NeoRune_" + Unreal.ModName;
-            if (UGameplayStatics.DoesSaveGameExist(oldSlot, 0)) UGameplayStatics.DeleteGameInSlot(oldSlot, 0);
+            // No save slot calls in here (BetterBlueprintLoader deletes the logs NeoRune kept in save slots): on the Xbox
+            // app version they can let the garbage collector run, and the objects here are held in locals only, which it
+            // doesn't see.
             node = UGameplayStatics.SpawnObject(Unreal.ClassOf<UInterchangeBaseNode>(), container) as UInterchangeBaseNode;
             if (node == null) return;
             node.InitializeNode(NodeId, Unreal.ModName, EInterchangeNodeContainerType.None);
