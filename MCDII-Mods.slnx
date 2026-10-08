@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="BetterBlueprintLoader/BetterBlueprintLoader.csproj" />
+  <Project Path="BetterGear/BetterGear.csproj" />
   <Project Path="CurrencyLimits/CurrencyLimits.csproj" />
   <Project Path="CustomCapes/CustomCapes.csproj" />
   <Project Path="CustomSkins/CustomSkins.csproj" />

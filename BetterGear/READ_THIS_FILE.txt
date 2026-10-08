@@ -1,0 +1,47 @@
+BETTER ARMOR & WEAPONS
+======================
+
+Hide your armor and weapons in Minecraft Dungeons II, or wear any armor piece or weapon you've found as a look over what you have on: keep the stats of your best gear and the look of your favourite.
+
+In your inventory, right-click a piece of armor or a weapon you wear (or open its menu with a controller). Under the game's options there are two more:
+    - Hide Helmet (or Chestplate, Leggings, Boots, Melee Weapon, Ranged Weapon) hides just that piece; Show Helmet brings it back
+    - Change Helmet Look shows every helmet you've found: click one to wear it as a look, or the first box (the helmet you wear) to go back to the game's look
+
+All the looks are also in Collectibles, the Custom tab, in the Armor & Weapons section: a row for each kind of gear, where the "None" box hides that piece.
+Your choices are remembered, and stay on when you change your gear.
+
+Every item that has been in your inventory while the mod is installed stays in the list, even after you salvage it. Items you salvaged before installing the mod show only if the game counts them as collected. To list every armor piece and weapon in the game, turn on Show All Gear in the settings.
+
+A look only changes how your gear looks: its stats, enchantments and attacks stay those of the item you wear. A weapon's look follows your weapon, in your hand or on your back.
+
+Keys:
+    F2  Hide all your armor, or show it again (with its looks)
+
+To change this key, add a second key (like a controller button), or turn on Show All Gear, open the game's Settings, Mods, Better Armor & Weapons.
+
+Only you can see the looks. Everyone else sees the gear you wear.
+
+REQUIREMENTS
+------------
+
+- BetterBlueprintLoader, which must also be installed
+
+INSTALL
+-------
+
+1. Close the game, and fully close the Minecraft Launcher if you use it.
+
+2. Open your Minecraft Dungeons II Paks folder.
+    Steam: Right click the game in your library, then Manage > Browse local files, then open Dungeons\Content\Paks
+    Minecraft Launcher: C:\XboxGames\Minecraft Dungeons II\Content\Dungeons\Content\Paks
+
+3. Create a folder called ~mods inside the Paks folder if there is not one already.
+
+4. Extract this zip into ~mods, so the files end up in: Paks\~mods\BetterGear
+
+Other mods that hide armor or change how weapons look do the same job: use only one of them.
+
+UNINSTALL
+---------
+
+Delete the BetterGear folder from ~mods.
