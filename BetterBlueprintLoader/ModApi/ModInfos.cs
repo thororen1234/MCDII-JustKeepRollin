@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NeoRune;
 using UE.CoreUObject;
 using UE.Engine;
@@ -26,7 +27,81 @@ public static class ModInfos
         if (setting.Height == 0) setting.Height = 16;
         var colour = setting.DefaultColour;
         if (colour.R == 0 && colour.G == 0 && colour.B == 0 && colour.A == 0) setting.DefaultColour = new FLinearColor { R = 1, G = 1, B = 1, A = 1 };
+        // Its text in the game's language, when the mod has it.
+        int language = Translation(info);
+        if (language < 0) return setting;
+        // Settings without an id (headings, text) are matched by their own label.
+        var key = setting.Id != "" ? setting.Id : setting.Label;
+        foreach (var translated in info.Translations[language].Settings)
+        {
+            if (translated.Id != key) continue;
+            if (translated.Label != "") setting.Label = translated.Label;
+            if (translated.Description != "") setting.Description = translated.Description;
+            if (translated.ButtonText != "") setting.ButtonText = translated.ButtonText;
+            if (translated.Placeholder != "") setting.Placeholder = translated.Placeholder;
+            // Only as many as the mod's own: a choice is saved as its option's place in the list.
+            if (translated.Options.Count == setting.Options.Count) setting.Options = translated.Options;
+            break;
+        }
         return setting;
+    }
+
+    /// <summary>
+    /// The mod's translation for the game's language: its name exactly ("pt-BR"), else the same language ("pt", or
+    /// another "pt-..."). -1 when it has none.
+    /// </summary>
+    public static int Translation(ModDetails? info)
+    {
+        if (info == null || info.Translations.Count == 0) return -1;
+        var language = UKismetStringLibrary.ToLower(UKismetInternationalizationLibrary.GetCurrentLanguage());
+        language = UKismetStringLibrary.Replace(language, "_", "-", ESearchCase.CaseSensitive);
+        var main = Main(language);
+        if (main == "") return -1;
+        int near = -1;
+        for (int i = 0; i < info.Translations.Count; i++)
+        {
+            var theirs = UKismetStringLibrary.ToLower(UKismetStringLibrary.Trim(info.Translations[i].Language));
+            theirs = UKismetStringLibrary.Replace(theirs, "_", "-", ESearchCase.CaseSensitive);
+            if (theirs == language) return i;
+            if (near < 0 && Main(theirs) == main) near = i;
+        }
+        return near;
+    }
+
+    /// <summary>A language's first part: "pt" of "pt-br".</summary>
+    static string Main(string language)
+    {
+        language = UKismetStringLibrary.Replace(language, "_", "-", ESearchCase.CaseSensitive);
+        if (UKismetStringLibrary.Split(language, "-", out var main, out var rest, ESearchCase.CaseSensitive, ESearchDir.FromStart)) return main;
+        return language;
+    }
+
+    /// <summary>A mod's name as shown, in the game's language when it has it (its folder when it has no name).</summary>
+    public static string Name(ModDetails? info, string folder)
+    {
+        if (info == null) return folder;
+        int language = Translation(info);
+        if (language >= 0 && info.Translations[language].ModName != "") return info.Translations[language].ModName;
+        return info.ModName != "" ? info.ModName : folder;
+    }
+
+    /// <summary>A mod's description as shown, in the game's language when it has it.</summary>
+    public static string Description(ModDetails? info)
+    {
+        if (info == null) return "";
+        int language = Translation(info);
+        if (language >= 0 && info.Translations[language].Description != "") return info.Translations[language].Description;
+        return info.Description;
+    }
+
+    /// <summary>Whether a value is one of a list (ignoring case and spaces at the ends); "true" stands for an empty list.</summary>
+    public static bool OneOf(string value, List<string> values)
+    {
+        value = UKismetStringLibrary.Trim(UKismetStringLibrary.TrimTrailing(value));
+        if (values.Count == 0) return UKismetStringLibrary.EqualEqual_StriStri(value, "true");
+        foreach (var wanted in values)
+            if (UKismetStringLibrary.EqualEqual_StriStri(value, UKismetStringLibrary.Trim(UKismetStringLibrary.TrimTrailing(wanted)))) return true;
+        return false;
     }
 
     /// <summary>Whether a setting has a value sent to the mod (as opposed to headings, text, buttons and keybinds).</summary>

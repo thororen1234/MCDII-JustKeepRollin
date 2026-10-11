@@ -38,6 +38,12 @@ public class ModManager : AActor
     public const string MenuButtonSetting = "menu_button";
     public const string RestartSetting = "restart";
     public const string RestartKeySetting = "restart_key";
+    public const string OpenKeySetting = "open_menu_key";
+    public const string OpenToSetting = "open_menu_mod";
+    public const string UpdateCheckSetting = "update_check";
+    // A mod's page on Nexus Mods, by its id, and this loader's id there (as in its nexus.json).
+    public const string NexusPage = "https://www.nexusmods.com/minecraftdungeons2/mods/";
+    const int OwnNexusId = 95;
 
     LoaderSettings? settings;
     // Per mod, in start order: its package (/Game/Mods/X/ModActor, also for mods without one), its folder, its ModInfo,
@@ -61,6 +67,7 @@ public class ModManager : AActor
     public bool Started;
     MenuLabel? label;
     GameMenus? menus;
+    ModUpdates? updates;
     double waitStarted;
     double characterSince;
 
@@ -81,6 +88,8 @@ public class ModManager : AActor
         if (settings == null) settings = UGameplayStatics.CreateSaveGameObject(Unreal.ClassOf<LoaderSettings>()) as LoaderSettings;
         if (settings == null) return;
         OwnInfo = ModInfos.Load(Unreal.ModName);
+        // NeoRuneExtended.Sdk 0.4.3 puts it in the ModInfo from nexus.json; built with an older one, it's said here.
+        if (OwnInfo != null && OwnInfo.NexusModsId <= 0) OwnInfo.NexusModsId = OwnNexusId;
 
         // Still set: the game crashed while that mod was starting, the last time. It stays off until turned on.
         if (settings.Starting != "")
@@ -128,6 +137,7 @@ public class ModManager : AActor
             Save();
         }
         menus = GameMenus.Start(this);
+        StartUpdateCheck();
         waitStarted = World.RealTime(this);
         characterSince = -1;
         Timer.Start(this, nameof(WaitForCharacter), WaitInterval, loop: true);
@@ -152,12 +162,120 @@ public class ModManager : AActor
     public override void ReceiveTick(float deltaSeconds)
     {
         PageSettled();
+        CheckUpdates();
         Flush();
         var controller = World.PlayerController(this);
         if (controller == null) return;
         // The Restart Mods Key setting: F12 unless changed. A key left empty is never pressed.
-        if (!GetKeybind(Unreal.ModName, RestartKeySetting, out var key, out var secondary)) return;
-        if (controller.WasInputKeyJustPressed(key) || controller.WasInputKeyJustPressed(secondary)) Restart();
+        if (GetKeybind(Unreal.ModName, RestartKeySetting, out var key, out var secondary)
+            && (controller.WasInputKeyJustPressed(key) || controller.WasInputKeyJustPressed(secondary))) Restart();
+        // The Open Mods Key setting: the Mods tab, on the mod chosen in Open To (the list when none).
+        if (GetKeybind(Unreal.ModName, OpenKeySetting, out var open, out var openSecondary)
+            && (controller.WasInputKeyJustPressed(open) || controller.WasInputKeyJustPressed(openSecondary)))
+        {
+            GetValue(Unreal.ModName, OpenToSetting, out var folder);
+            menus?.OpenMods(folder);
+        }
+    }
+
+    /// <summary>
+    /// Starts the update check, unless it's turned off: from the loader's save when this game session already downloaded
+    /// the versions (each level has its own loader), else from Nexus Mods (see ModUpdates).
+    /// </summary>
+    void StartUpdateCheck()
+    {
+        if (settings == null || !OwnToggle(UpdateCheckSetting)) return;
+        double frame = UKismetSystemLibrary.GetFrameCount();
+        var saved = settings.Versions != "" && frame >= settings.VersionsFrame ? settings.Versions : "";
+        updates = ModUpdates.Start(this, saved);
+    }
+
+    void CheckUpdates()
+    {
+        if (updates == null || !updates.Update() || settings == null) return;
+        settings.Versions = updates.Text();
+        settings.VersionsFrame = UKismetSystemLibrary.GetFrameCount();
+        Save();
+        RecountUpdates();
+        menus?.Refresh();
+        label?.Refresh();
+    }
+
+    /// <summary>"" while checking (or turned off), else "done" or "failed".</summary>
+    public string UpdateState => updates != null ? updates.State : "";
+
+    /// <summary>
+    /// The newer version of a mod on Nexus Mods (by folder; the loader's own too), or "" when it's up to date, isn't on
+    /// Nexus Mods (its ModInfo has no NexusModsId) or the versions aren't known.
+    /// </summary>
+    public string UpdateOf(string folder)
+    {
+        var info = InfoOf(folder);
+        if (updates == null || updates.State != "done" || info == null || info.NexusModsId <= 0 || !OwnToggle(UpdateCheckSetting)) return "";
+        var latest = updates.Latest(info.NexusModsId, info.NexusFileName);
+        return latest != "" && ModUpdates.Newer(latest, info.Version) ? latest : "";
+    }
+
+    /// <summary>Whether a mod's ModInfo says where it is on Nexus Mods, so its updates can be checked.</summary>
+    public bool OnNexus(string folder)
+    {
+        var info = InfoOf(folder);
+        return info != null && info.NexusModsId > 0;
+    }
+
+    /// <summary>How many mods (the loader too) have a newer version on Nexus Mods, as last counted (the main menu shows it every frame).</summary>
+    public int UpdatesFound;
+
+    /// <summary>Counts the mods with a newer version again: when the versions arrive, the mods are found, or the check is turned on or off.</summary>
+    void RecountUpdates()
+    {
+        int count = UpdateOf(Unreal.ModName) != "" ? 1 : 0;
+        foreach (var folder in Folders)
+            if (UpdateOf(folder) != "") count++;
+        if (count != UpdatesFound) Note($"Update check: {count} mods have updates");
+        UpdatesFound = count;
+    }
+
+    /// <summary>
+    /// Whether a setting of a mod's page shows: one with a ShowIf shows while that setting has one of its ShowIfValues
+    /// ("true" when it lists none), and while that setting shows itself.
+    /// </summary>
+    public bool Shown(string folder, int index)
+    {
+        var info = InfoOf(folder);
+        // Each step follows a setting this one depends on; a loop of them stops after a few.
+        for (int depth = 0; depth < 8 && info != null && index >= 0 && index < info.Settings.Count; depth++)
+        {
+            var setting = info.Settings[index];
+            if (setting.ShowIf == "") return true;
+            GetValue(folder, setting.ShowIf, out var value);
+            if (!ModInfos.OneOf(value, setting.ShowIfValues)) return false;
+            index = SettingIndex(folder, setting.ShowIf);
+            if (index < 0) return true;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Whether an option of a Select shows: one with an OptionShowIf (a setting's id) shows while that setting has one of
+    /// its OptionShowIfValues (comma separated; "true" when empty).
+    /// </summary>
+    public bool OptionShown(string folder, SettingEntry setting, int option)
+    {
+        if (option < 0 || option >= setting.OptionShowIf.Count || setting.OptionShowIf[option] == "") return true;
+        GetValue(folder, setting.OptionShowIf[option], out var value);
+        var values = option < setting.OptionShowIfValues.Count ? UKismetStringLibrary.ParseIntoArray(setting.OptionShowIfValues[option], ",", true) : new List<string>();
+        return ModInfos.OneOf(value, values);
+    }
+
+    /// <summary>Which settings of a mod's page show now, as text ("1101..."): when it changes, the page is made again.</summary>
+    public string ShownKey(string folder)
+    {
+        var info = InfoOf(folder);
+        var key = "";
+        if (info == null) return key;
+        for (int i = 0; i < info.Settings.Count; i++) key += Shown(folder, i) ? "1" : "0";
+        return key;
     }
 
     /// <summary>Finds the mods and starts them, in the saved order.</summary>
@@ -188,6 +306,7 @@ public class ModManager : AActor
         Save();
         Started = true;
         FileLog.Write($"Started {Running()} of {Mods.Count} mods in {World.LevelName(this)} (game {UGameVersion.BuildVersion()})");
+        RecountUpdates();
         if (InMenu()) ShowMenuLabel();
         menus?.Refresh();
     }
@@ -559,6 +678,12 @@ public class ModManager : AActor
         SendSetting(ActorOf(folder), id, value);
         menus?.SettingChanged(folder, id, value);
         if (folder == Unreal.ModName) ApplyOwnSetting(id);
+        if (folder == Unreal.ModName && id == UpdateCheckSetting)
+        {
+            if (updates == null) StartUpdateCheck();
+            RecountUpdates();
+            label?.Refresh();
+        }
     }
 
     /// <summary>A saved keybind: a setting's (its defaults when not changed), or one the mod saved itself.</summary>

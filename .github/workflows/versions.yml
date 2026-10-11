@@ -1,0 +1,43 @@
+name: Mod versions
+
+# Every hour: the latest version of every mod on Nexus Mods, as versions.png for BetterBlueprintLoader's update check
+# (see tools/versions/generate.py). Published as the only commit of the versions branch, replaced when it changes, so
+# neither main nor the branch collects a commit an hour. BetterBlueprintLoader downloads
+# https://raw.githubusercontent.com/thororen1234/MCDII-Mods/refs/heads/versions/versions.png.
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: versions
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Ask Nexus Mods
+        run: python3 tools/versions/generate.py out
+
+      - name: Publish if changed
+        env:
+          TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if git fetch --depth 1 origin versions 2>/dev/null && git show FETCH_HEAD:versions.txt > old.txt 2>/dev/null && cmp -s old.txt out/versions.txt; then
+            echo "No changes"
+            exit 0
+          fi
+          cd out
+          git init -q -b versions
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add versions.png versions.txt
+          git commit -q -m "Mod versions $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q -f "https://x-access-token:${TOKEN}@github.com/${REPO}.git" versions

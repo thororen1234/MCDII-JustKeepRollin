@@ -25,6 +25,8 @@ public enum SettingKind : byte
     [UName("NewEnumerator9")] TextInput,
     [UName("NewEnumerator10")] Colour,
     [UName("NewEnumerator11")] Widget,
+    // Ends a run of settings placed in columns (Side): the settings after it take the page's whole width again.
+    [UName("NewEnumerator12")] SideEnd,
 }
 
 /// <summary>
@@ -57,18 +59,67 @@ public struct SettingEntry
     [UName("HexInput_42_DB63640B4B8BB8A52B0CD1864485944A")] public bool HexInput;
     [UName("Placeholder_44_615145644B6DC2DB2508D3ADF1A38DB2")] public string Placeholder;
     [UName("SecondaryKey_46_B8190CA744AEB23447C30AB5ED9A0C45")] public FKey SecondaryKey;
+    // Cooked ModInfos store fields by their place in the struct: new fields only ever go at the end, in this order.
+    // Shown a step in from the left, under the setting it belongs to.
+    [UName("Indent_48_50980BC549AC4E9726313786BFC1057F")] public bool Indent;
+    // Shown only while the setting with this id has one of these values ("true" when there are none).
+    [UName("ShowIf_50_33A616AD497AF6278AEA2DA45A43F3A6")] public string ShowIf;
+    [UName("ShowIfValues_52_FF9B6E2B479B78D0DF18269AA2E10F59")] public List<string> ShowIfValues;
+    // A Select's options, each shown only while a setting (by id, "" for always) has one of its values (comma separated).
+    [UName("OptionShowIf_54_11B48E5E413341FAD386CFABEC57AC80")] public List<string> OptionShowIf;
+    [UName("OptionShowIfValues_56_8AD700EE4CF9303B2EDEB9804D40988A")] public List<string> OptionShowIfValues;
+    // A column to go in ("Left" or "Right"), beside the settings in the other one, until a Side End; and the width of
+    // its column (a fraction of the page, or pixels; half when 0).
+    [UName("Side_58_FC50D8E74EA8F301E910D3A85B57D6BA")] public string Side;
+    [UName("SideWidth_60_053658F048132438EA33D79A48371358")] public double SideWidth;
+}
+
+/// <summary>A setting's text in another language, matched to the setting by its id (by its label for one without).</summary>
+[Asset("/Game/Mods/BlueprintLoader/S_ModSettingTranslation", Guid = "E8356C85-4A1B-9E71-A541-FFACC01947FF")]
+public struct SettingTranslation
+{
+    [UName("Id_2_C8D371194F81CC1E7EF20EA6D72F7717")] public string Id;
+    [UName("Label_4_E0CA9B24451E19664F70419A67ED4CB9")] public string Label;
+    [UName("Description_6_40496C224D8C0FBE0E5CA2A6035A8A72")] public string Description;
+    [UName("Options_8_002B7C1F4A3E5C1726F5B7B8CECD9EAC")] public List<string> Options;
+    [UName("ButtonText_10_BB141FBD4490C9D958E81591FD9C43FB")] public string ButtonText;
+    [UName("Placeholder_12_4C617A2746606A75B46AFD847C4CFA0C")] public string Placeholder;
+}
+
+/// <summary>
+/// A mod's text in another language: its name, description and settings, shown when the game is in that language
+/// ("de", "fr", "pt-BR": the game's language, or its first part). Empty fields keep the mod's own text.
+/// </summary>
+[Asset("/Game/Mods/BlueprintLoader/S_ModTranslation", Guid = "226907A3-4730-C1B4-09A5-A5984E12544B")]
+public struct ModTranslation
+{
+    [UName("Language_2_36C3465A405F4F1B237A1CA2273F0717")] public string Language;
+    [UName("ModName_4_A2349754415BD67001BA65A7E1866323")] public string ModName;
+    [UName("Description_6_19AB83BC47978E78916E768936A8713A")] public string Description;
+    [UName("DisableMessage_8_560E88C6405D58D3011F6A96048191BD")] public string DisableMessage;
+    [UName("Settings_10_2C85FB5D44560EAC78B7E0AAFF48672C")] public List<SettingTranslation> Settings;
 }
 
 /// <summary>A mod's /Game/Mods/&lt;Mod&gt;/ModInfo: what the Mods tab shows about it, and its settings page.</summary>
 [Asset("/Game/Mods/BlueprintLoader/BP_ModInfo")]
 public class ModDetails : UPrimaryDataAsset
 {
+    // Cooked ModInfos store fields by their place in the class: new fields only ever go at the end, in this order.
     public string ModName;
     public string Version;
     public string Author;
     public string AuthorUrl;
     public string Description;
     public List<SettingEntry> Settings = new();
+    public bool SupportsDisabling;
+    public bool PreventDisabling;
+    public string DisableMessage;
+    // The mod's page on Nexus Mods (nexusmods.com/minecraftdungeons2/mods/<id>), for the update check, and the name of
+    // its file there when the page has several (else its main file's version counts).
+    public int NexusModsId;
+    public string NexusFileName;
+    public int LoadPriority;
+    public List<ModTranslation> Translations = new();
 }
 
 /// <summary>A mod's saved values, as ModSettingsLibrary.LoadModSave gives them.</summary>

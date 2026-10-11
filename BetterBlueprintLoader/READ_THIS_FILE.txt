@@ -23,6 +23,14 @@ BetterBlueprintLoader's own page has:
     Main Menu Mods Button  The MODS button on the main menu.
     Restart Mods           Stops every mod and starts them again. Handy when making mods.
     Restart Mods Key       A key that does the same from anywhere: F12 unless you change it.
+    Open Mods Key          Opens the Mods tab from anywhere, on the main menu or while playing: F10 unless you change it.
+    Open To                Where that key opens the tab: the list of mods, or straight to one mod's page.
+    Check For Updates      Looks up the latest version of your mods on Nexus Mods once each time the game starts.
+
+UPDATES
+-------
+
+Mods that say where they are on Nexus Mods are checked for updates. A mod with a newer version says "update available" in the Mods tab, its page links to its Nexus Mods page, and the main menu's MODS button shows a "!". The versions come from a list on GitHub that's refreshed from Nexus Mods every hour, so a brand new upload can take up to an hour to show.
 
 If the game crashes while a mod is starting or getting its saved settings, BetterBlueprintLoader turns that mod off and tells you on the main menu the next time. Turn it back on in the Mods tab when the mod is updated. If a mod's settings page crashes the game, that page is shown in a plain look from then on.
 

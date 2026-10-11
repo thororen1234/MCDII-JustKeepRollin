@@ -57,6 +57,19 @@ public class ModsPage : UUserWidget
     // Slider settings' value texts, by setting index: dragging updates the text, not the whole page.
     Dictionary<int, UTextBlock> sliderTexts = new();
     bool dragging;
+    // Which of the mod's settings showed when the page was made (see ModManager.ShownKey): made again when that changes.
+    string shownKey;
+    // Where rows go: the page's column, or one of two side by side (settings with a Side, until a Side End), and how far
+    // in from the left (settings with Indent).
+    UVerticalBox? into;
+    UHorizontalBox? sideRow;
+    UVerticalBox? leftColumn;
+    UVerticalBox? rightColumn;
+    USizeBox? leftBox;
+    USizeBox? rightBox;
+    float indent;
+    const float IndentWidth = 40;
+    const float ColumnGap = 16;
 
     // What the player did, done on the next Update: the page's controls report it from the middle of the game's input
     // code, where making the page again or saving isn't safe (both can let the garbage collector run, and the clicked
@@ -158,6 +171,9 @@ public class ModsPage : UUserWidget
         var hadFocus = FocusedRow(out var focusKey);
         if (focusWanted == "") focusWanted = focusKey;
         content.ClearChildren();
+        CloseSide();
+        indent = 0;
+        shownKey = selected == ListPage ? "" : manager.ShownKey(SelectedFolder());
         rows.Clear();
         stateLine = null;
         resetArmed = false;
@@ -260,6 +276,16 @@ public class ModsPage : UUserWidget
         FocusRow("");
     }
 
+    /// <summary>Shows a mod's page (by folder; the loader's own too), or the list for "" or a mod that isn't installed.</summary>
+    public void Open(string folder)
+    {
+        if (manager == null) return;
+        int index = manager.Folders.IndexOf(folder);
+        selected = folder == Unreal.ModName ? LoaderPage : (index >= 0 ? index : ListPage);
+        focusWanted = "first";
+        refreshWanted = true;
+    }
+
     /// <summary>The Mods tab was chosen again: the list, like the game's tabs start at their top.</summary>
     public void BackToList()
     {
@@ -340,6 +366,8 @@ public class ModsPage : UUserWidget
             sliderMoved = false;
             SliderMovedNow(index, movedTo);
         }
+        // A setting other settings show or hide by changed: the page is made again with the ones shown now.
+        if (!refreshWanted && selected != ListPage && manager != null && manager.ShownKey(SelectedFolder()) != shownKey) refreshWanted = true;
         if (refreshWanted) Refresh();
         else FollowFocus();
     }
@@ -413,11 +441,31 @@ public class ModsPage : UUserWidget
         if (manager == null) return;
         var folder = index < 0 ? Unreal.ModName : manager.Folders[index];
         var info = manager.InfoOf(folder);
-        var name = info != null && info.ModName != "" ? info.ModName : folder;
         var more = info != null && info.Version != "" ? $"Version {info.Version}" : "";
+        more = Join(more, UpdateText(folder));
         if (index >= 0) more = Join(more, StateText(index));
         if (info != null && info.Author != "") more = Join(more, "By " + info.Author);
-        SetDetails(name, info != null ? info.Description : "", more);
+        SetDetails(ModInfos.Name(info, folder), ModInfos.Description(info), more);
+    }
+
+    /// <summary>What the update check found for a mod: "" when it isn't on Nexus Mods or the check is off.</summary>
+    string UpdateText(string folder)
+    {
+        if (manager == null || !manager.OnNexus(folder)) return "";
+        var latest = manager.UpdateOf(folder);
+        if (latest != "") return "Update available: " + latest;
+        if (manager.UpdateState == "done") return "Up to date";
+        if (manager.UpdateState == "failed") return "Unable to check for updates";
+        return "";
+    }
+
+    /// <summary>A mod's name in the list, marked when it has an update.</summary>
+    string ListName(int index)
+    {
+        if (manager == null) return "";
+        var folder = index < 0 ? Unreal.ModName : manager.Folders[index];
+        var name = ModInfos.Name(manager.InfoOf(folder), folder);
+        return manager.UpdateOf(folder) != "" ? name + " (update available)" : name;
     }
 
     static string Join(string first, string second) => first == "" ? second : (second == "" ? first : first + "\n" + second);
@@ -470,12 +518,8 @@ public class ModsPage : UUserWidget
             }
             if (manager.Notice != "") Add(Wrapped(manager.Notice), 8);
             if (manager.Warning != "") Add(Wrapped(manager.Warning), 8);
-            ModRow(-1, OwnName(), 4);
-            for (int i = 0; i < manager.Mods.Count; i++)
-            {
-                var info = manager.Infos[i];
-                ModRow(i, info != null && info.ModName != "" ? info.ModName : manager.Folders[i], 4);
-            }
+            ModRow(-1, ListName(-1), 4);
+            for (int i = 0; i < manager.Mods.Count; i++) ModRow(i, ListName(i), 4);
             if (manager.Mods.Count == 0 && manager.Started) Add(Wrapped("No mods found in the ~mods folder"), 12);
             return;
         }
@@ -490,12 +534,8 @@ public class ModsPage : UUserWidget
             AddRow("Retry Game Look", null, -1, "retryPlain", 8);
         if (manager.Notice != "") Add(Wrapped(manager.Notice), 8);
         if (manager.Warning != "") Add(Wrapped(manager.Warning), 8);
-        AddRow(OwnName(), ModRight(-1), -1, "select:-1", 12);
-        for (int i = 0; i < manager.Mods.Count; i++)
-        {
-            var info = manager.Infos[i];
-            AddRow(info != null && info.ModName != "" ? info.ModName : manager.Folders[i], ModRight(i), -1, "select:" + i, 4);
-        }
+        AddRow(ListName(-1), ModRight(-1), -1, "select:-1", 12);
+        for (int i = 0; i < manager.Mods.Count; i++) AddRow(ListName(i), ModRight(i), -1, "select:" + i, 4);
         if (manager.Mods.Count == 0 && manager.Started) Add(Wrapped("No mods found in the ~mods folder"), 12);
     }
 
@@ -511,12 +551,6 @@ public class ModsPage : UUserWidget
         else if (state == "Running" || state == "Nothing to run") row.SetButton(HasSettings(info) ? "Settings" : (state == "Running" ? "" : "Game files"));
         else row.SetButton(state);
         Add(row, top);
-    }
-
-    string OwnName()
-    {
-        var info = manager?.InfoOf(Unreal.ModName);
-        return info != null && info.ModName != "" ? info.ModName : Unreal.ModName;
     }
 
     /// <summary>What a mod's row has at the right: why it isn't running, if it isn't, and SETTINGS if it has any.</summary>
@@ -572,7 +606,7 @@ public class ModsPage : UUserWidget
         var header = Ui.Row(tree);
         if (header != null)
         {
-            var title = header.AddChildToHorizontalBox(Text(info != null && info.ModName != "" ? info.ModName : folder, "title"));
+            var title = header.AddChildToHorizontalBox(Text(ModInfos.Name(info, folder), "title"));
             title?.SetSize(new FSlateChildSize { Value = 1, SizeRule = ESlateSizeRule.Fill });
             title?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
             if (info != null && info.Version != "") header.AddChildToHorizontalBox(Dimmed(Text("Version " + info.Version, "body")))?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
@@ -583,7 +617,15 @@ public class ModsPage : UUserWidget
             var author = Underlined(Text("By " + info.Author, "body"), info.AuthorUrl != "");
             Add(info.AuthorUrl != "" ? Clickable(author, -1, "website") : author, 4);
         }
-        if (info != null && info.Description != "") Add(Wrapped(info.Description), 16);
+        // The update check's finding; a newer version links to the mod's page on Nexus Mods.
+        var update = UpdateText(folder);
+        if (update != "")
+        {
+            if (manager.UpdateOf(folder) != "") Add(Clickable(Underlined(Text(update, "body"), true), -1, "nexus"), 6);
+            else Add(Dimmed(Text(update, "body")), 6);
+        }
+        var description = ModInfos.Description(info);
+        if (description != "") Add(Wrapped(description), 16);
 
         if (selected == LoaderPage)
         {
@@ -627,8 +669,19 @@ public class ModsPage : UUserWidget
         for (int i = 0; i < info.Settings.Count; i++)
         {
             if (info.Settings[i].Id != "" || info.Settings[i].Type == SettingKind.Widget) hasSettings = true;
-            AddSetting(folder, i, ModInfos.Setting(info, i));
+            var setting = ModInfos.Setting(info, i);
+            if (setting.Type == SettingKind.SideEnd)
+            {
+                CloseSide();
+                continue;
+            }
+            if (!manager.Shown(folder, i)) continue;
+            PlaceSide(setting);
+            indent = setting.Indent ? IndentWidth : 0;
+            AddSetting(folder, i, setting);
+            indent = 0;
         }
+        CloseSide();
         if (!hasSettings) return;
         var reset = Game(GameRow.Button, -1, "reset", "Reset Settings");
         if (reset != null)
@@ -686,10 +739,85 @@ public class ModsPage : UUserWidget
         return fit;
     }
 
-    void Add(UWidget? widget, float top)
+    void Add(UWidget? widget, float top) => AddPadded(widget, new FMargin { Top = top });
+
+    /// <summary>Adds a row where rows go now (the page, or a column), a step in for an indented setting.</summary>
+    void AddPadded(UWidget? widget, FMargin padding)
     {
-        if (widget == null || content == null) return;
-        content.AddChildToVerticalBox(widget)?.SetPadding(new FMargin { Top = top });
+        var target = into ?? content;
+        if (widget == null || target == null) return;
+        padding.Left += indent;
+        target.AddChildToVerticalBox(widget)?.SetPadding(padding);
+    }
+
+    /// <summary>
+    /// Puts a setting in its column: "Right" in the right one, any other Side in the left one, both opened side by side
+    /// when the first comes; a setting without one ends them, like a Side End. Its SideWidth sizes its column: a fraction
+    /// of the page (up to 1), or pixels.
+    /// </summary>
+    void PlaceSide(SettingEntry setting)
+    {
+        var side = UKismetStringLibrary.ToLower(UKismetStringLibrary.Trim(UKismetStringLibrary.TrimTrailing(setting.Side)));
+        if (side == "")
+        {
+            CloseSide();
+            return;
+        }
+        if (sideRow == null) OpenSide();
+        bool right = side == "right";
+        into = right ? rightColumn : leftColumn;
+        if (setting.SideWidth <= 0) return;
+        var box = right ? rightBox : leftBox;
+        var other = right ? leftBox : rightBox;
+        if (box?.Slot is not UHorizontalBoxSlot slot || other?.Slot is not UHorizontalBoxSlot otherSlot) return;
+        if (setting.SideWidth <= 1)
+        {
+            box.ClearWidthOverride();
+            slot.SetSize(new FSlateChildSize { Value = (float)setting.SideWidth, SizeRule = ESlateSizeRule.Fill });
+            otherSlot.SetSize(new FSlateChildSize { Value = 1 - (float)setting.SideWidth, SizeRule = ESlateSizeRule.Fill });
+        }
+        else
+        {
+            box.SetWidthOverride((float)setting.SideWidth);
+            slot.SetSize(new FSlateChildSize { Value = 1, SizeRule = ESlateSizeRule.Automatic });
+            otherSlot.SetSize(new FSlateChildSize { Value = 1, SizeRule = ESlateSizeRule.Fill });
+        }
+    }
+
+    /// <summary>Two columns side by side, half the page each until a setting sizes one.</summary>
+    void OpenSide()
+    {
+        if (tree == null) return;
+        into = null;
+        sideRow = Ui.Row(tree);
+        leftColumn = Ui.Column(tree);
+        rightColumn = Ui.Column(tree);
+        leftBox = UGameplayStatics.SpawnObject(Unreal.ClassOf<USizeBox>(), tree) as USizeBox;
+        rightBox = UGameplayStatics.SpawnObject(Unreal.ClassOf<USizeBox>(), tree) as USizeBox;
+        if (sideRow == null || leftColumn == null || rightColumn == null || leftBox == null || rightBox == null)
+        {
+            sideRow = null;
+            return;
+        }
+        leftBox.AddChild(leftColumn);
+        rightBox.AddChild(rightColumn);
+        var left = sideRow.AddChildToHorizontalBox(leftBox);
+        left?.SetSize(new FSlateChildSize { Value = 1, SizeRule = ESlateSizeRule.Fill });
+        var right = sideRow.AddChildToHorizontalBox(rightBox);
+        right?.SetSize(new FSlateChildSize { Value = 1, SizeRule = ESlateSizeRule.Fill });
+        right?.SetPadding(new FMargin { Left = ColumnGap });
+        Add(sideRow, 4);
+    }
+
+    /// <summary>Back to rows across the whole page.</summary>
+    void CloseSide()
+    {
+        into = null;
+        sideRow = null;
+        leftColumn = null;
+        rightColumn = null;
+        leftBox = null;
+        rightBox = null;
     }
 
     /// <summary>
@@ -769,9 +897,7 @@ public class ModsPage : UUserWidget
                 AddSlider(index, setting, UKismetStringLibrary.Conv_StringToDouble(value));
                 break;
             case SettingKind.Select:
-                int option = UKismetStringLibrary.Conv_StringToInt(value);
-                var shown = option >= 0 && option < setting.Options.Count ? setting.Options[option] : value;
-                AddRow(setting.Label, look.ButtonLook(tree, shown), index, "next", 4);
+                AddRow(setting.Label, look.ButtonLook(tree, ChoiceText(folder, setting, value)), index, "next", 4);
                 break;
             case SettingKind.UrlButton:
             case SettingKind.EventButton:
@@ -792,7 +918,7 @@ public class ModsPage : UUserWidget
         // Under its row, like the game's notes; the details show it too.
         var description = Dimmed(Text(setting.Description, "body"));
         description?.SetAutoWrapText(true);
-        if (description != null) content.AddChildToVerticalBox(description)?.SetPadding(new FMargin { Left = 24, Top = 6, Right = 24, Bottom = 6 });
+        AddPadded(description, new FMargin { Left = 24, Top = 6, Right = 24, Bottom = 6 });
     }
 
     /// <summary>
@@ -822,7 +948,7 @@ public class ModsPage : UUserWidget
                 // A button row showing the chosen option, which clicking moves on: the game's dropdown row crashes the
                 // game without a game setting behind it.
                 row = Game(GameRow.Button, index, "next", setting.Label);
-                row?.SetButton(Choice(setting, value));
+                row?.SetButton(ChoiceText(folder, setting, value));
                 break;
             case SettingKind.UrlButton:
             case SettingKind.EventButton:
@@ -842,7 +968,7 @@ public class ModsPage : UUserWidget
         if (setting.Description != "" && content != null && setting.Type != SettingKind.Heading)
         {
             var description = Wrapped(setting.Description);
-            if (description != null) content.AddChildToVerticalBox(description)?.SetPadding(new FMargin { Left = 24, Top = 8, Right = 24, Bottom = 4 });
+            AddPadded(description, new FMargin { Left = 24, Top = 8, Right = 24, Bottom = 4 });
         }
         return true;
     }
@@ -851,6 +977,45 @@ public class ModsPage : UUserWidget
     {
         int option = UKismetStringLibrary.Conv_StringToInt(value);
         return option >= 0 && option < setting.Options.Count ? setting.Options[option] : value;
+    }
+
+    /// <summary>
+    /// The loader's Open To setting: its options are the mods installed, saved by folder (a mod's place in the list
+    /// changes). "" (or its default, 0) is the list.
+    /// </summary>
+    static bool IsOpenTo(string folder, SettingEntry setting) => folder == Unreal.ModName && setting.Id == ModManager.OpenToSetting;
+
+    /// <summary>A Select's value as its button shows it.</summary>
+    string ChoiceText(string folder, SettingEntry setting, string value)
+    {
+        if (manager == null || !IsOpenTo(folder, setting)) return Choice(setting, value);
+        if (value == Unreal.ModName) return ModInfos.Name(manager.InfoOf(value), value);
+        return manager.Folders.Contains(value) ? ModInfos.Name(manager.InfoOf(value), value) : setting.Options.Count > 0 ? setting.Options[0] : "Mods List";
+    }
+
+    /// <summary>
+    /// The value clicking a Select moves on to: its next option shown (options can show only while other settings have
+    /// some values), after the last the first. Open To moves through the list, the loader, then the mods.
+    /// </summary>
+    string NextChoice(string folder, SettingEntry setting, string value)
+    {
+        if (manager == null) return value;
+        if (IsOpenTo(folder, setting))
+        {
+            if (value == "" || value == "0" || (!manager.Folders.Contains(value) && value != Unreal.ModName)) return Unreal.ModName;
+            if (value == Unreal.ModName) return manager.Folders.Count > 0 ? manager.Folders[0] : "";
+            int at = manager.Folders.IndexOf(value);
+            return at + 1 < manager.Folders.Count ? manager.Folders[at + 1] : "";
+        }
+        int count = setting.Options.Count;
+        int current = UKismetStringLibrary.Conv_StringToInt(value);
+        if (current < 0 || current >= count) current = -1;
+        for (int step = 1; step <= count; step++)
+        {
+            int option = (current + step) % count;
+            if (manager.OptionShown(folder, setting, option)) return option.ToString();
+        }
+        return value;
     }
 
     /// <summary>A control at a fixed width, for the right of a row.</summary>
@@ -968,14 +1133,13 @@ public class ModsPage : UUserWidget
                 toggle?.SetToggle(on);
                 break;
             case "next":
-                int count = setting.Options.Count;
-                if (count == 0) break;
-                var next = ((UKismetStringLibrary.Conv_StringToInt(value) + 1) % count).ToString();
+                var next = NextChoice(folder, setting, value);
+                if (next == value) break;
                 var choice = RowFor(index, "next");
                 inPlace = choice != null;
                 manager.SetValue(folder, setting.Id, next);
                 inPlace = false;
-                choice?.SetButton(Choice(setting, next));
+                choice?.SetButton(ChoiceText(folder, setting, next));
                 break;
             case "url":
                 UKismetSystemLibrary.LaunchURL(setting.Url);
@@ -1008,6 +1172,10 @@ public class ModsPage : UUserWidget
             case "website":
                 var info = manager.InfoOf(folder);
                 if (info != null) UKismetSystemLibrary.LaunchURL(info.AuthorUrl);
+                return;
+            case "nexus":
+                var nexus = manager.InfoOf(folder);
+                if (nexus != null && nexus.NexusModsId > 0) UKismetSystemLibrary.LaunchURL(ModManager.NexusPage + nexus.NexusModsId);
                 return;
             case "retryPlain":
                 manager.RetryPlainPage();

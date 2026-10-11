@@ -72,6 +72,7 @@ public class MenuLabel : ScreenWidget
     {
         if (manager == null || text == null) return;
         var line = $"BetterBlueprintLoader {manager.Version}: {manager.Running()} of {manager.Mods.Count} mods running";
+        if (manager.UpdatesFound > 0) line += manager.UpdatesFound == 1 ? ", 1 update on Nexus Mods" : $", {manager.UpdatesFound} updates on Nexus Mods";
         if (manager.Notice != "") line = manager.Notice + "\n" + line;
         text.SetText(line);
         text.SetColorAndOpacity(Ui.SlateColor(manager.Notice != "" ? Ui.Color(1, 0.75f, 0.3f, 1) : Ui.Color(0.85f, 0.85f, 0.85f, 0.8f)));

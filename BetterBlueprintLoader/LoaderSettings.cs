@@ -35,4 +35,8 @@ public class LoaderSettings : USaveGame
     public List<string> KeyIds = new();
     public List<FKey> PrimaryKeys = new();
     public List<FKey> SecondaryKeys = new();
+    // The update check's text (see ModUpdates), and the engine's frame count when it was downloaded: the count starts
+    // again with each game session, so a smaller one means it's from an earlier session and is downloaded again.
+    public string Versions;
+    public double VersionsFrame;
 }

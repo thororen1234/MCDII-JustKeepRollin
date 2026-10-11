@@ -26,6 +26,8 @@ public class GameMenus : AActor
     const string TabTag = "SW.UI.Settings";
     const string TabLabel = "Mods";
     const string ButtonLabel = "MODS";
+    // After the label while mods have updates on Nexus Mods.
+    const string UpdateMark = " !";
     // The main menu button the MODS button goes after (CharactersButton if that one's missing).
     const string MenuButtonAfter = "DLCButton";
 
@@ -434,6 +436,11 @@ public class GameMenus : AActor
             Note($"Mods tab: shown, on the player's screen {added}");
             PlacePage();
         }
+        if (openToWanted)
+        {
+            openToWanted = false;
+            page.Open(openTo);
+        }
         page.Refresh();
     }
 
@@ -536,6 +543,9 @@ public class GameMenus : AActor
         return true;
     }
 
+    /// <summary>The MODS button's label: marked while mods have updates.</summary>
+    string MenuText() => manager != null && manager.UpdatesFound > 0 ? ButtonLabel + UpdateMark : ButtonLabel;
+
     void OnLobby(UUserWidget widget)
     {
         lobby = widget as UAS_InitialLobbyScreen;
@@ -615,7 +625,7 @@ public class GameMenus : AActor
         var slot = labelStack.AddChildToOverlay(ownLabel);
         slot?.SetHorizontalAlignment(EHorizontalAlignment.HAlign_Center);
         slot?.SetVerticalAlignment(EVerticalAlignment.VAlign_Center);
-        ownLabel.SetText(ButtonLabel);
+        ownLabel.SetText(MenuText());
         menuLabel.SetRenderOpacity(0);
     }
 
@@ -636,12 +646,12 @@ public class GameMenus : AActor
             var widget = walk[i];
             if (widget is UTextBlock text)
             {
-                if (UKismetStringLibrary.ToLower(text.GetText().ToString()) == "lobby button") text.SetText(ButtonLabel);
+                if (UKismetStringLibrary.ToLower(text.GetText().ToString()) == "lobby button") text.SetText(MenuText());
                 continue;
             }
             if (widget is URichTextBlock rich)
             {
-                if (UKismetStringLibrary.ToLower(rich.GetText().ToString()) == "lobby button") rich.SetText(ButtonLabel);
+                if (UKismetStringLibrary.ToLower(rich.GetText().ToString()) == "lobby button") rich.SetText(MenuText());
                 continue;
             }
             if (widget is UUserWidget user && user.WidgetTree?.RootWidget != null) walk.Add(user.WidgetTree.RootWidget);
@@ -677,7 +687,9 @@ public class GameMenus : AActor
     void KeepLabels()
     {
         // The hidden label keeps MODS too, so the button stays the size it is with MODS.
-        if (menuLabel != null && UKismetSystemLibrary.IsValid(menuLabel) && menuLabel.GetText().ToString() != ButtonLabel) menuLabel.SetText(ButtonLabel);
+        var text = MenuText();
+        if (menuLabel != null && UKismetSystemLibrary.IsValid(menuLabel) && menuLabel.GetText().ToString() != text) menuLabel.SetText(text);
+        if (ownLabel != null && UKismetSystemLibrary.IsValid(ownLabel) && ownLabel.GetText().ToString() != text) ownLabel.SetText(text);
         MatchMenuLabel();
         RenameDefaults();
         if (pageShown && page != null) page.KeepLabels();
@@ -730,6 +742,30 @@ public class GameMenus : AActor
     {
         Note("MODS button clicked");
         openSettings = true;
+        openTab = true;
+    }
+
+    // The Open Mods Key was pressed: the page to show once the tab is open (a mod's folder, or "" for the list).
+    string openTo = "";
+    bool openToWanted;
+
+    /// <summary>
+    /// Opens the Mods tab from anywhere (the Open Mods Key), on a mod's page or the list: the settings first if they
+    /// aren't open, then the tab, then the page.
+    /// </summary>
+    public void OpenMods(string folder)
+    {
+        Note($"Open Mods Key pressed: {(folder == "" ? "the list" : folder)}");
+        openTo = folder;
+        openToWanted = true;
+        if (pageShown && page != null)
+        {
+            page.Open(openTo);
+            openToWanted = false;
+            return;
+        }
+        // Already in the settings, on another tab: only the tab changes.
+        if (settingsScreen == null || !UKismetSystemLibrary.IsValid(settingsScreen) || !settingsScreen.IsVisible()) openSettings = true;
         openTab = true;
     }
 
