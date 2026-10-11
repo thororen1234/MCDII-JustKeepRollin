@@ -22,11 +22,16 @@ namespace CustomCapes;
     Description = "Reads the cape files again, to see changes you just saved in your image editor.")]
 [ModSetting.Keybind(ExportSetting, "Save Game Cape", Default = DefaultExportKey,
     Description = "Saves the game's cape you wear as a PNG in the Capes folder's _game folder, to start your own from.")]
+[ModSetting.Heading("Animated Capes")]
+[ModSetting.Slider(SpeedSetting, "Frames Per Second", Default = DefaultSpeed, Min = 1, Max = 30, Step = 1,
+    Description = "How fast animated capes play.")]
 public class ModActor : AActor, ISettingsEvents
 {
     const string NextSetting = "next_key";
     const string ReloadSetting = "reload_key";
     const string ExportSetting = "export_key";
+    const string SpeedSetting = "frames_per_second";
+    const float DefaultSpeed = 10;
     const string DefaultNextKey = "F3";
     const string DefaultReloadKey = "F4";
     const string DefaultExportKey = "F5";
@@ -68,6 +73,7 @@ public class ModActor : AActor, ISettingsEvents
     FKey reloadKey2 = new FKey();
     FKey exportKey = new FKey { KeyName = DefaultExportKey };
     FKey exportKey2 = new FKey();
+    float framesPerSecond = DefaultSpeed;
 
     protected override void ReceiveBeginPlay()
     {
@@ -113,9 +119,13 @@ public class ModActor : AActor, ISettingsEvents
         nextKey2 = new FKey();
         reloadKey2 = new FKey();
         exportKey2 = new FKey();
+        framesPerSecond = DefaultSpeed;
     }
 
-    public void OnSettingChanged(string id, string value) { }
+    public void OnSettingChanged(string id, string value)
+    {
+        if (id == SpeedSetting) framesPerSecond = (float)UKismetMathLibrary.FClamp(ModSettings.ToNumber(value), 1, 30);
+    }
     public void OnButtonPressed(string id) { }
 
     static bool Pressed(APlayerController controller, FKey key, FKey secondary) =>
@@ -136,6 +146,7 @@ public class ModActor : AActor, ISettingsEvents
         }
         capes?.WatchPreviews();
         var now = World.RealTime(this);
+        capes?.Animate(now, framesPerSecond);
         if (now >= nextCheck)
         {
             nextCheck = now + CheckInterval;
@@ -174,7 +185,9 @@ public class ModActor : AActor, ISettingsEvents
         {
             if (widget == null) continue;
             var cls = UKismetSystemLibrary.Conv_SoftClassReferenceToString(UKismetSystemLibrary.Conv_ClassToSoftClassReference(UGameplayStatics.GetObjectClass(widget)));
-            if (cls.Contains(CollectiblesClass)) collectibles = widget;
+            // The screen shown now: closed ones can stay around until they're cleaned up, and putting the row in one
+            // of those took it off the screen.
+            if (cls.Contains(CollectiblesClass) && (collectibles == null || OnActiveScreen(widget))) collectibles = widget;
             else if (cls.Contains(CollectiblesScreenClass) && widget is UCommonActivatableWidget screen && screen.IsActivated()) shown = true;
         }
 
@@ -191,7 +204,7 @@ public class ModActor : AActor, ISettingsEvents
         }
         menuShown = shown;
         if (row == null) return;
-        if (collectibles != null && collectibles != rowIn) PlaceRow(collectibles);
+        if (shown && collectibles != null && collectibles != rowIn && OnActiveScreen(collectibles)) PlaceRow(collectibles);
         if (shown && tabbed && tab != null)
         {
             tab.Keep();
@@ -253,6 +266,11 @@ public class ModActor : AActor, ISettingsEvents
         FollowGrid();
         FileLog.Write($"Cape row shown over the Collectibles screen (item grid {(grid == null ? "not found" : "not in a list")})");
     }
+
+    /// <summary>Whether a widget is on a screen that's active (shown, not closed or covered by another).</summary>
+    static bool OnActiveScreen(UWidget widget) =>
+        UCommonUILibrary.FindParentWidgetOfType(widget, Unreal.ClassOf<UCommonActivatableWidget>()) is UCommonActivatableWidget screen
+        && screen.IsActivated();
 
     /// <summary>The first widget with a name under a widget, or null.</summary>
     static UWidget? Find(UWidget? root, string name)

@@ -206,7 +206,9 @@ public class ModActor : AActor, ISettingsEvents
         {
             if (widget == null) continue;
             var cls = UKismetSystemLibrary.Conv_SoftClassReferenceToString(UKismetSystemLibrary.Conv_ClassToSoftClassReference(UGameplayStatics.GetObjectClass(widget)));
-            if (cls.Contains(CollectiblesClass)) collectibles = widget;
+            // The screen shown now: closed ones can stay around until they're cleaned up, and putting the row in one
+            // of those took it off the screen.
+            if (cls.Contains(CollectiblesClass) && (collectibles == null || OnActiveScreen(widget))) collectibles = widget;
             else if (cls.Contains(CollectiblesScreenClass) && widget is UCommonActivatableWidget screen && screen.IsActivated()) shown = true;
         }
 
@@ -223,7 +225,7 @@ public class ModActor : AActor, ISettingsEvents
         }
         menuShown = shown;
         if (row == null) return;
-        if (collectibles != null && collectibles != rowIn) PlaceRow(collectibles);
+        if (shown && collectibles != null && collectibles != rowIn && OnActiveScreen(collectibles)) PlaceRow(collectibles);
         if (shown && tabbed && tab != null)
         {
             tab.Keep();
@@ -285,6 +287,11 @@ public class ModActor : AActor, ISettingsEvents
         FollowGrid();
         FileLog.Write($"Skin row shown over the Collectibles screen (item grid {(grid == null ? "not found" : "not in a list")})");
     }
+
+    /// <summary>Whether a widget is on a screen that's active (shown, not closed or covered by another).</summary>
+    static bool OnActiveScreen(UWidget widget) =>
+        UCommonUILibrary.FindParentWidgetOfType(widget, Unreal.ClassOf<UCommonActivatableWidget>()) is UCommonActivatableWidget screen
+        && screen.IsActivated();
 
     /// <summary>The first widget with a name under a widget, or null.</summary>
     static UWidget? Find(UWidget? root, string name)

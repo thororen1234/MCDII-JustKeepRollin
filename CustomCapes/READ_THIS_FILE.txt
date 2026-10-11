@@ -7,6 +7,16 @@ Put your capes in the Capes folder (see INSTALL) as 1.png, 2.png, 3.png... up to
     - a Java Edition cape: 64x32 (or an HD size of it, like 128x64), or just the cape part, 22x17
     - a cape in the game's own layout: 32x16 (press F5 to save the game's cape you wear as one, to start from)
 
+ANIMATED CAPES: put the frames (any of the sizes above) in either way:
+    - stacked top to bottom in one PNG, like MinecraftCapes/OptiFine animated capes: 1.png at 64x96 is 3 frames of 64x32
+    - one PNG per frame, in a folder named with the cape's number: Capes\1\1.png, Capes\1\2.png, Capes\1\3.png...
+      (its MRES, if it has one, is Capes\1\MRES.png)
+    - or one PNG per frame without a folder: 1_1.png, 1_2.png, 1_3.png...
+    Frame PNGs win over a 1.png. The names must be numbers: the game can't look up other names.
+The speed is a setting: the game's Settings, Mods, Custom Capes, Frames Per Second (10 to start with).
+The game can't read AVIF (or GIF/WebP) files: turn one into a stacked PNG first, for example on ezgif.com (split it, then
+make a sprite sheet with one column), or with tools/avif2cape.py from the mod's GitHub.
+
 To pick a cape, open your inventory and go to Collectibles, where the capes are: the Custom Capes row under the game's capes has a button for each cape, and one for the game's cape. Your choice is remembered.
 
 If you wear one of the game's capes, your custom cape takes its place and swings like it. If you wear none, you get a cape of the game's shape that hangs still.

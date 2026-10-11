@@ -23,11 +23,17 @@ public class CustomCapesSettings : USaveGame
 /// The game's cape textures are 32x16. Columns 0-21 are a Java cape's rows 1-16 (left edge, outside, right edge,
 /// inside), and rows 0-9 of columns 22 and 23 are its bottom and top edges, stood up. Java capes (64x32, or just the
 /// 22x17 cape, and HD sizes of either) are moved into that layout; 32x16 PNGs are taken as the game's layout already.
+///
+/// Animated capes are frames of those sizes, either stacked top to bottom in one PNG (as MinecraftCapes and OptiFine
+/// make them) or a PNG each: in a folder of the cape's number (3\1.png, 3\2.png...), or 3_1.png, 3_2.png... The game
+/// can't list a folder's files, so the names are tried in turn. Every frame is drawn in the game's layout once,
+/// and the materials' texture is switched to the next one as it's due.
 /// </summary>
 public class CapeSwapper : UObject
 {
     const string SettingsSlot = "CustomCapes";
     const int MaxCapes = 20;
+    const int MaxFrames = 128;
     // The mesh of every one of the game's capes, and the body of the player's character and of its copies in menus.
     const string CapeMesh = "/Game/Spicewood/Art/Characters/Player/Capes/SK_Cape.SK_Cape";
     const string PlayerBody = "/Game/Spicewood/Art/Characters/Player/Master/SK_Player_Master.SK_Player_Master";
@@ -38,7 +44,7 @@ public class CapeSwapper : UObject
     const float CapeYaw = 180;
     const float CapeRoll = -110;
     // The cape material's texture, and its texture of how each pixel takes the light: red metallic, green roughness,
-    // blue glow, alpha subsurface. A cape gets its own <number>_MRES.png, or else a plain one.
+    // blue glow, alpha subsurface. A cape gets its own <number>_MRES.png (MRES.png in its folder), or else a plain one.
     const string TextureParameter = "BaseColour";
     const string MresParameter = "MRES";
     // The game's capes are about this rough, with no metal or glow.
@@ -61,9 +67,10 @@ public class CapeSwapper : UObject
 
     UObject? owner;
     CustomCapesSettings? settings;
-    // The PNGs as read (by name: "3", "3_MRES"), and per cape the textures worn, in the game's layout.
+    // The PNGs as read (by name: "3", "3_2", "3/2", "3_MRES"), and per cape frame (by "<number>_<frame>", frames from 0) the
+    // textures worn, in the game's layout.
     Dictionary<string, UTexture2D> files = new();
-    Dictionary<int, UTextureRenderTarget2D> capes = new();
+    Dictionary<string, UTextureRenderTarget2D> capes = new();
     Dictionary<int, UTextureRenderTarget2D> mresTextures = new();
     // The game's cape materials seen on the character, and their textures (read through an instance of each).
     Dictionary<UMaterialInterface, UTexture> materialCapes = new();
@@ -77,6 +84,10 @@ public class CapeSwapper : UObject
 
     ACharacter? character;
     UTexture? worn;
+    // The worn cape's frames (more than one for an animated cape), the one worn, and when the next one is due (real time).
+    List<UTexture> frames = new();
+    int frame;
+    double nextFrame;
     // Set when the picked PNG couldn't be read, so Check doesn't try (and log) again every second.
     bool missing;
     // The menu characters already logged: the game puts its cape back on them often, and they get it again.
@@ -175,19 +186,47 @@ public class CapeSwapper : UObject
                 gameMres = UKismetSystemLibrary.LoadAsset_Blocking(UKismetSystemLibrary.Conv_SoftObjPathToSoftObjRef(UKismetSystemLibrary.MakeSoftObjectPath(settings.GameMresPath))) as UTexture;
             worn = gameCape;
         }
-        else worn = Load(Cape);
+        else
+        {
+            int count = FrameCount(Cape);
+            for (int i = 0; i < count; i++)
+            {
+                var texture = Load(Cape, i);
+                if (texture == null) break;
+                frames.Add(texture);
+            }
+            if (frames.Count > 0) worn = frames[0];
+            if (frames.Count > 1) FileLog.Write($"{Cape} is animated: {frames.Count} frames");
+        }
 
         if (worn == null)
         {
             if (Cape != 0)
             {
                 missing = true;
-                FileLog.Write($"Couldn't read {Cape}.png in {Folder()}: a cape is 64x32 or 22x17 (Java), or 32x16 (the game's layout)");
+                FileLog.Write($"Couldn't read {Cape}.png, {Cape}\\1.png or {Cape}_1.png in {Folder()}: a cape (or each frame of an animated one) is 64x32 or 22x17 (Java), or 32x16 (the game's layout)");
             }
             return;
         }
         if (character != null && Cape != 0) Dress(character);
         if (character == null || PreviewShown()) DressPreviews();
+    }
+
+    /// <summary>
+    /// Wears an animated cape's next frame when it's due, on every material wearing the frame before. Call every frame.
+    /// </summary>
+    public void Animate(double now, float framesPerSecond)
+    {
+        if (frames.Count < 2 || worn == null || now < nextFrame) return;
+        // From the frame's due time, so the speed holds; after a hitch (or the first frame), from now.
+        nextFrame += 1 / framesPerSecond;
+        if (nextFrame <= now) nextFrame = now + 1 / framesPerSecond;
+        var previous = worn;
+        frame = (frame + 1) % frames.Count;
+        worn = frames[frame];
+        foreach (var instance in instances)
+            if (instance != null && UKismetSystemLibrary.IsValid(instance) && instance.K2_GetTextureParameterValue(TextureParameter) == previous)
+                instance.SetTextureParameterValue(TextureParameter, worn);
     }
 
     /// <summary>
@@ -440,6 +479,9 @@ public class CapeSwapper : UObject
                 components[i].SetMaterial(slots[i], originals[i]);
         RemoveOwnCape(null);
         worn = null;
+        frames.Clear();
+        frame = 0;
+        nextFrame = 0;
         instances.Clear();
         oldCapes.Clear();
         oldMres.Clear();
@@ -449,20 +491,50 @@ public class CapeSwapper : UObject
         added.Clear();
     }
 
-    /// <summary>The texture to wear for a cape PNG, in the game's layout: null for a missing PNG or one of another size.</summary>
-    UTexture? Load(int number)
+    /// <summary>
+    /// The texture to wear for a frame of a cape (from 0; a still cape has frame 0 only), in the game's layout: null for a
+    /// missing PNG or one of another size.
+    /// </summary>
+    UTexture? Load(int number, int index)
     {
-        var file = File(number.ToString());
+        // A PNG per frame, or the frames stacked in one.
+        var file = FrameFile(number, index + 1);
+        int frameIn = 0;
+        if (file == null)
+        {
+            file = File(number.ToString());
+            frameIn = index;
+        }
         if (file == null) return null;
-        var target = capes.ContainsKey(number) ? capes[number] : null;
+        var key = $"{number}_{index}";
+        var target = capes.ContainsKey(key) ? capes[key] : null;
         // sRGB, which the game lights like the character's own skin (linear ones come out brighter and washed out).
-        target = Convert(file, target, true);
-        if (target != null) capes[number] = target;
+        target = Convert(file, target, true, frameIn);
+        if (target != null) capes[key] = target;
         return target;
     }
 
-    /// <summary>The cape's texture, for its button (its outside is from OutsideStart to OutsideEnd): null for a missing PNG.</summary>
-    public UTexture? Icon(int number) => Load(number);
+    /// <summary>A frame's own PNG (frames from 1): in the cape's folder (3\1.png), or else 3_1.png. Null if it has none.</summary>
+    UTexture2D? FrameFile(int number, int index)
+    {
+        var file = File($"{number}/{index}");
+        if (file == null) file = File($"{number}_{index}");
+        return file;
+    }
+
+    /// <summary>How many frames a cape has: its numbered PNGs (3\1.png or 3_1.png on), or the frames stacked in its PNG.</summary>
+    int FrameCount(int number)
+    {
+        int count = 0;
+        while (count < MaxFrames && FrameFile(number, count + 1) != null) count++;
+        if (count > 0) return count;
+        var file = File(number.ToString());
+        if (file == null || !Layout(file, out var java, out var layoutWidth, out var frameHeight, out var unit, out count)) return 0;
+        return count < MaxFrames ? count : MaxFrames;
+    }
+
+    /// <summary>The cape's texture (its first frame), for its button (its outside is from OutsideStart to OutsideEnd): null for a missing PNG.</summary>
+    public UTexture? Icon(int number) => Load(number, 0);
 
     /// <summary>
     /// The game's cape the character wears now (the same layout as a worn one), for the game's cape's button: the one it
@@ -510,32 +582,46 @@ public class CapeSwapper : UObject
     }
 
     /// <summary>
-    /// A cape PNG drawn in the game's layout, on the render target given if it's the right size, or on a new one. Null
-    /// for a PNG that isn't a cape's size.
+    /// A PNG's layout: Java or the game's, its width and a frame's height in the layout's pixels, how many of the PNG's
+    /// pixels make one of the layout's, and how many frames are stacked in it. False for a PNG that isn't a cape's size.
     /// </summary>
-    UTextureRenderTarget2D? Convert(UTexture2D file, UTextureRenderTarget2D? target, bool srgb)
+    static bool Layout(UTexture2D file, out bool java, out float layoutWidth, out float frameHeight, out float unit, out int count)
     {
         int width = file.Blueprint_GetSizeX();
         int height = file.Blueprint_GetSizeY();
-        // The PNG's layout, and how many of its pixels make one of the layout's.
-        bool java = true;
-        float layoutWidth = JavaWidth;
-        float layoutHeight = JavaWidth / 2;
-        float unit = 1;
-        if (width == GameWidth && height == GameHeight)
+        java = true;
+        layoutWidth = JavaWidth;
+        frameHeight = JavaWidth / 2;
+        unit = 1;
+        count = 0;
+        if (width == GameWidth && height % GameHeight == 0)
         {
             java = false;
             layoutWidth = GameWidth;
-            layoutHeight = GameHeight;
+            frameHeight = GameHeight;
         }
-        else if (width == height * 2 && width % JavaWidth == 0) unit = width / JavaWidth;
-        else if (width * JavaCapeHeight == height * JavaCapeWidth && width % JavaCapeWidth == 0)
+        else if (width % JavaWidth == 0 && height % (width / 2) == 0) unit = width / JavaWidth;
+        else if (width % JavaCapeWidth == 0 && height % (width / JavaCapeWidth * JavaCapeHeight) == 0)
         {
             layoutWidth = JavaCapeWidth;
-            layoutHeight = JavaCapeHeight;
+            frameHeight = JavaCapeHeight;
             unit = width / JavaCapeWidth;
         }
-        else return null;
+        else return false;
+        count = (int)(height / (frameHeight * unit));
+        return count > 0;
+    }
+
+    /// <summary>
+    /// A frame of a cape PNG (from 0; frames are stacked top to bottom) drawn in the game's layout, on the render target
+    /// given if it's the right size, or on a new one. Null for a PNG that isn't a cape's size, or has no such frame.
+    /// </summary>
+    UTextureRenderTarget2D? Convert(UTexture2D file, UTextureRenderTarget2D? target, bool srgb, int index)
+    {
+        if (!Layout(file, out var java, out var layoutWidth, out var frameHeight, out var unit, out var count) || index >= count) return null;
+        // The whole PNG's height in the layout's pixels, and where the frame starts in it.
+        float layoutHeight = frameHeight * count;
+        int top = (int)(frameHeight * index);
 
         int targetWidth = (int)(GameWidth * unit);
         int targetHeight = (int)(GameHeight * unit);
@@ -550,7 +636,7 @@ public class CapeSwapper : UObject
         for (int attempt = 0; attempt < 3; attempt++)
         {
             UKismetRenderingLibrary.ClearRenderTarget2D(owner, target, new FLinearColor());
-            Draw(target, file, java, unit, layoutWidth, layoutHeight);
+            Draw(target, file, java, unit, layoutWidth, layoutHeight, top);
             if (Solid(target, (int)((OutsideLeft + OutsideWidth / 2) * unit), (int)(GameHeight / 2 * unit))) break;
         }
         return target;
@@ -558,24 +644,24 @@ public class CapeSwapper : UObject
 
     /// <summary>
     /// Draws a cape PNG on a render target in the game's layout. Drawn alpha-composited onto the see-through target, so
-    /// each pixel keeps its alpha.
+    /// each pixel keeps its alpha. Top is the row (in the layout's pixels) the frame drawn starts at.
     /// </summary>
-    void Draw(UTextureRenderTarget2D target, UTexture2D file, bool java, float unit, float layoutWidth, float layoutHeight)
+    void Draw(UTextureRenderTarget2D target, UTexture2D file, bool java, float unit, float layoutWidth, float layoutHeight, int top)
     {
         UKismetRenderingLibrary.BeginDrawCanvasToRenderTarget(owner, target, out var canvas, out var size, out var context);
         if (canvas != null)
         {
-            if (!java) Block(canvas, file, 0, 0, GameWidth, GameHeight, 0, 0, unit, layoutWidth, layoutHeight);
+            if (!java) Block(canvas, file, 0, top, GameWidth, GameHeight, 0, 0, unit, layoutWidth, layoutHeight);
             else
             {
                 // Rows 1-16: left edge, outside, right edge, inside.
-                Block(canvas, file, 0, 1, JavaCapeWidth, GameHeight, 0, 0, unit, layoutWidth, layoutHeight);
+                Block(canvas, file, 0, top + 1, JavaCapeWidth, GameHeight, 0, 0, unit, layoutWidth, layoutHeight);
                 // Row 0 has the top edge over the outside and the bottom edge after it, a pixel each per column of the
                 // outside: stood up, one under the other.
                 for (int i = 0; i < OutsideWidth; i++)
                 {
-                    Block(canvas, file, OutsideLeft + i, 0, 1, 1, TopColumn, i, unit, layoutWidth, layoutHeight);
-                    Block(canvas, file, OutsideLeft + OutsideWidth + i, 0, 1, 1, BottomColumn, i, unit, layoutWidth, layoutHeight);
+                    Block(canvas, file, OutsideLeft + i, top, 1, 1, TopColumn, i, unit, layoutWidth, layoutHeight);
+                    Block(canvas, file, OutsideLeft + OutsideWidth + i, top, 1, 1, BottomColumn, i, unit, layoutWidth, layoutHeight);
                 }
             }
         }
@@ -625,13 +711,15 @@ public class CapeSwapper : UObject
         return file;
     }
 
-    /// <summary>The cape's &lt;number&gt;_MRES.png (in the same layout as the cape), or a plain MRES.</summary>
+    /// <summary>The cape's MRES.png in its folder or &lt;number&gt;_MRES.png (in the same layout as the cape), or a plain MRES.</summary>
     UTexture? Mres(int number)
     {
-        var file = File($"{number}_MRES");
+        var file = File($"{number}/MRES");
+        if (file == null) file = File($"{number}_MRES");
         if (file != null)
         {
-            var target = Convert(file, mresTextures.ContainsKey(number) ? mresTextures[number] : null, false);
+            // One for every frame: the first one, if it's stacked like an animated cape's.
+            var target = Convert(file, mresTextures.ContainsKey(number) ? mresTextures[number] : null, false, 0);
             if (target != null)
             {
                 mresTextures[number] = target;
@@ -712,13 +800,14 @@ public class CapeSwapper : UObject
         UKismetRenderingLibrary.ExportRenderTarget(owner, target, Folder() + "_game/", name + ".png");
     }
 
-    /// <summary>The numbers of the PNGs in the Capes folder (1.png to 20.png), in order.</summary>
+    /// <summary>The numbers of the capes in the Capes folder (1.png to 20.png, or their first frames 1\1.png or 1_1.png), in order.</summary>
     public static List<int> Available()
     {
         var numbers = new List<int>();
         var folder = Folder();
         for (int i = 1; i <= MaxCapes; i++)
-            if (UBlueprintPathsLibrary.FileExists(folder + i + ".png")) numbers.Add(i);
+            if (UBlueprintPathsLibrary.FileExists(folder + i + ".png") || UBlueprintPathsLibrary.FileExists(folder + i + "/1.png")
+                || UBlueprintPathsLibrary.FileExists(folder + i + "_1.png")) numbers.Add(i);
         return numbers;
     }
 

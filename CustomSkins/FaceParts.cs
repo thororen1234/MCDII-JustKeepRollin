@@ -27,9 +27,13 @@ public class FaceParts : UObject
     const float FaceLeft = -25;
     const float FaceTop = 200;
     const float FaceFront = 25;
-    // Just in front of the face, the pupils in front of the eyes.
-    const float EyeDepth = 0.2f;
-    const float PupilDepth = 0.4f;
+    // In front of the face, the pupils in front of the eyes. The game's own face has layers up to 0.4 cm out (its eyes at
+    // 0.06, planes of the face at 0.25 and 0.4, from its mesh): shapes at the same distance as one flickered as one or
+    // the other was drawn. The eye shapes overlap each other (a 1 pixel eye on row 5 and the 2 pixel ones on rows 4-5
+    // and 5-6), so each is a step further out than the one before, for the same reason.
+    const float EyeDepth = 0.6f;
+    const float PupilDepth = 1.0f;
+    const float ShapeStep = 0.05f;
     const float SkinSize = 64;
 
     // The squares of the shape being built: fields, because a List passed to a method is a copy in a Blueprint.
@@ -84,17 +88,17 @@ public class FaceParts : UObject
         int column, int pupilColumn, int u, int u2, int pupilU, int pupilU2)
     {
         Shape(actor, body, material, eye, column, 2, u, 6, 5, 5, EyeDepth);
-        Shape(actor, body, material, eye, column, 2, u2, 6, 6, 6, EyeDepth);
-        Shape(actor, body, material, eye, column, 2, u2, 7, 7, 7, EyeDepth);
-        Shape(actor, body, material, eye, column, 2, u, 0, 4, 5, EyeDepth);
-        Shape(actor, body, material, eye, column, 2, u, 4, 5, 6, EyeDepth);
-        Shape(actor, body, material, eye, column, 2, u, 2, 6, 7, EyeDepth);
+        Shape(actor, body, material, eye, column, 2, u2, 6, 6, 6, EyeDepth + ShapeStep);
+        Shape(actor, body, material, eye, column, 2, u2, 7, 7, 7, EyeDepth + 2 * ShapeStep);
+        Shape(actor, body, material, eye, column, 2, u, 0, 4, 5, EyeDepth + 3 * ShapeStep);
+        Shape(actor, body, material, eye, column, 2, u, 4, 5, 6, EyeDepth + 4 * ShapeStep);
+        Shape(actor, body, material, eye, column, 2, u, 2, 6, 7, EyeDepth + 5 * ShapeStep);
         Shape(actor, body, material, pupil, pupilColumn, 1, pupilU, 6, 5, 5, PupilDepth);
-        Shape(actor, body, material, pupil, pupilColumn, 1, pupilU2, 6, 6, 6, PupilDepth);
-        Shape(actor, body, material, pupil, pupilColumn, 1, pupilU2, 7, 7, 7, PupilDepth);
-        Shape(actor, body, material, pupil, pupilColumn, 1, pupilU, 0, 4, 5, PupilDepth);
-        Shape(actor, body, material, pupil, pupilColumn, 1, pupilU, 4, 5, 6, PupilDepth);
-        Shape(actor, body, material, pupil, pupilColumn, 1, pupilU, 2, 6, 7, PupilDepth);
+        Shape(actor, body, material, pupil, pupilColumn, 1, pupilU2, 6, 6, 6, PupilDepth + ShapeStep);
+        Shape(actor, body, material, pupil, pupilColumn, 1, pupilU2, 7, 7, 7, PupilDepth + 2 * ShapeStep);
+        Shape(actor, body, material, pupil, pupilColumn, 1, pupilU, 0, 4, 5, PupilDepth + 3 * ShapeStep);
+        Shape(actor, body, material, pupil, pupilColumn, 1, pupilU, 4, 5, 6, PupilDepth + 4 * ShapeStep);
+        Shape(actor, body, material, pupil, pupilColumn, 1, pupilU, 2, 6, 7, PupilDepth + 5 * ShapeStep);
     }
 
     /// <summary>A block of squares, some columns wide from rows first to last, coloured from the skin from (u, v).</summary>
